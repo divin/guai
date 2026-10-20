@@ -131,8 +131,8 @@ static void render(void) {
         set_text(s_value_layer, "");   // big digit + segmented bar on the canvas
         set_text(s_footer1_layer, "UP / DOWN ADJUST");
       } else {
-        set_text(s_value_layer, s_options[s_selection]);
-        set_text(s_footer1_layer, "UP / DOWN OPTION");
+        set_text(s_value_layer, "");   // option rows on the canvas
+        set_text(s_footer1_layer, "UP / DOWN CHOOSE");
       }
       set_text(s_footer2_layer, "SELECT TO SEND");
       break;
@@ -174,7 +174,8 @@ static void render(void) {
     layer_set_frame(text_layer_get_layer(s_anslabel_layer), GRect(10, ly, w, 16));
     layer_set_frame(text_layer_get_layer(s_value_layer), GRect(10, ly + 18, w, 30));
   } else if (s_state == STATE_SELECT && (strcmp(s_answer_type, "boolean") == 0 ||
-                                         strcmp(s_answer_type, "scale") == 0)) {
+                                         strcmp(s_answer_type, "scale") == 0 ||
+                                         strcmp(s_answer_type, "single_choice") == 0)) {
     // value text hidden — the question canvas shows the selection
   } else if (s_state == STATE_SELECT || s_state == STATE_SENDING ||
              s_state == STATE_FEEDBACK) {
@@ -432,7 +433,8 @@ static void click_config_provider(void *context) {
 
 static bool qcanvas_visible(void) {
   return s_state == STATE_SELECT && (strcmp(s_answer_type, "boolean") == 0 ||
-                                     strcmp(s_answer_type, "scale") == 0);
+                                     strcmp(s_answer_type, "scale") == 0 ||
+                                     strcmp(s_answer_type, "single_choice") == 0);
 }
 
 static void draw_tile(GContext *ctx, GRect r, const char *label, bool selected) {
@@ -527,12 +529,56 @@ static void draw_scale(GContext *ctx, GRect bounds) {
   }
 }
 
+// Full-width option rows with thin dividers; selected row = accent fill +
+// on-accent label + right chevron. Three rows visible; the window scrolls
+// with the selection (selection rides the middle row where possible).
+static void draw_options(GContext *ctx, GRect bounds) {
+  (void)bounds;
+  if (s_option_count < 1) return;
+  GSize ts = text_layer_get_content_size(s_title_layer);
+  int th_title = (int)ts.h;
+  if (th_title < 10) th_title = 28;
+  int ty = 52 + th_title + 4;
+  int row_h = (186 - ty) / 3;
+  if (row_h > 56) row_h = 56;
+  if (row_h < 24) row_h = 24;
+  int offset = s_selection - 1;          // selection rides the middle row
+  if (offset > s_option_count - 3) offset = s_option_count - 3;
+  if (offset < 0) offset = 0;
+  GFont font = fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD);
+  for (int row = 0; row < 3; row++) {
+    int i = offset + row;
+    if (i >= s_option_count) break;
+    int ry = ty + row * row_h;
+    bool sel = (i == s_selection);
+    GRect row_rect = GRect(10, ry, 156, row_h);
+    if (sel) {
+      graphics_context_set_fill_color(ctx, s_col_accent);
+      graphics_fill_rect(ctx, row_rect, 0, GCornerNone);
+      graphics_context_set_text_color(ctx, s_col_on_accent);
+      graphics_context_set_stroke_color(ctx, s_col_on_accent);
+      int my = ry + row_h / 2;
+      for (int o = 0; o < 2; o++) {      // 2px chevron at the row's right edge
+        graphics_draw_line(ctx, GPoint(148 - o, my - 5), GPoint(154 - o, my));
+        graphics_draw_line(ctx, GPoint(154 - o, my), GPoint(148 - o, my + 5));
+      }
+    } else {
+      graphics_context_set_text_color(ctx, s_col_fg);
+    }
+    graphics_draw_text(ctx, s_options[i], font, GRect(18, ry + 2, 126, row_h - 4),
+                       GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
+    graphics_context_set_stroke_color(ctx, s_col_muted);
+    graphics_draw_line(ctx, GPoint(10, ry + row_h), GPoint(166, ry + row_h));
+  }
+}
+
 static void qcanvas_update_proc(Layer *layer, GContext *ctx) {
   (void)layer;
   if (!qcanvas_visible()) return;
   GRect bounds = layer_get_bounds(layer);
   if (strcmp(s_answer_type, "boolean") == 0) draw_tiles(ctx, bounds);
-  else draw_scale(ctx, bounds);
+  else if (strcmp(s_answer_type, "scale") == 0) draw_scale(ctx, bounds);
+  else draw_options(ctx, bounds);
 }
 
 // ---------------------------------------------------------------------------
