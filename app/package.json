@@ -29,7 +29,8 @@
       "ANSWER_VALUE",
       "ANSWER_CHOICE",
       "STATUS_TEXT",
-      "DUE_BY"
+      "DUE_BY",
+      "UI_THEME"
     ],
     "resources": {
       "media": []

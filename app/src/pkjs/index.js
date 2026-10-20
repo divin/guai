@@ -13,6 +13,7 @@
 var SERVER_KEY = "GUAI_SERVER";
 var TOKEN_KEY = "GUAI_TOKEN";
 var RETRY_KEY = "GUAI_RETRY";
+var THEME_KEY = "GUAI_THEME";
 
 var pendingQueue = [];
 var retryQueue = [];
@@ -188,6 +189,7 @@ Pebble.addEventListener("appmessage", function (e) {
 
 Pebble.addEventListener("ready", function () {
   console.log("pkjs: ready, server=" + localStorage.getItem(SERVER_KEY) + " tokenSet=" + !!localStorage.getItem(TOKEN_KEY));
+  sendTheme(readTheme());
   loadRetry();
   refillQueue();
   // Periodic refresh while the app stays open (a newly due check-in appears).
@@ -195,6 +197,17 @@ Pebble.addEventListener("ready", function () {
     if (pendingQueue.length === 0) refillQueue();
   }, 30000);
 });
+
+// --- Theme (same pattern as the watchface) ------------------------------------
+
+function readTheme() {
+  var t = parseInt(localStorage.getItem(THEME_KEY) || "0", 10);
+  return (t === 1) ? 1 : 0;
+}
+
+function sendTheme(theme) {
+  sendAppMessage({ UI_THEME: theme });
+}
 
 // --- Configuration page (self-contained) --------------------------------------
 
@@ -226,11 +239,16 @@ function configHtml() {
       '<h2>GUAI Check-In</h2>' +
       '<form id="f">' +
       '<label>Server URL<br><input id="srv" value="' + srv + '"></label><br><br>' +
-      '<label>Token<br><input id="tok" value="' + tok + '"></label><br><br>' +
+      '<label>Token<br><input id="tok" value="' + tok + '"></label><br>' +
+      '<label>Theme<br><select id="theme">' +
+      '<option value="0"' + (readTheme() === 0 ? ' selected' : '') + '>Dark</option>' +
+      '<option value="1"' + (readTheme() === 1 ? ' selected' : '') + '>Light</option>' +
+      '</select></label><br><br>' +
       '<button type="submit">Save</button></form>' +
       '<script>document.getElementById("f").onsubmit=function(){' +
       'var send=function(){var opts={srv:document.getElementById("srv").value,' +
-      'tok:document.getElementById("tok").value};location.href=' +
+      'tok:document.getElementById("tok").value,' +
+      'theme:parseInt(document.getElementById("theme").value,10)};location.href=' +
       '"pebblejs://close#"+encodeURIComponent(JSON.stringify(opts))};' +
       'setTimeout(send,100);return false;};<\/script></body></html>'
     );
@@ -245,6 +263,11 @@ Pebble.addEventListener("webviewclosed", function (e) {
     var opts = JSON.parse(decodeURIComponent(e.response));
     if (opts.srv) localStorage.setItem(SERVER_KEY, opts.srv.trim());
     if (opts.tok) localStorage.setItem(TOKEN_KEY, opts.tok.trim());
+    if (opts.theme !== undefined) {
+      var theme = (parseInt(opts.theme, 10) === 1) ? 1 : 0;
+      localStorage.setItem(THEME_KEY, String(theme));
+      sendTheme(theme);
+    }
     refillQueue();
   }
 });

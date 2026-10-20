@@ -25,6 +25,16 @@ static TextLayer *s_title_layer;
 static TextLayer *s_value_layer;
 static TextLayer *s_hint_layer;
 
+// Theme tokens — same palette as the watchface (see apply_colors below and the
+// watchface's apply_colors in watchface/src/c/guai.c).
+static int s_theme = 0;            // 0 = dark (default), 1 = light
+static GColor s_col_bg;
+static GColor s_col_fg;            // primary text
+static GColor s_col_muted;         // secondary text (hints, unit labels)
+static GColor s_col_panel;         // panels / button rail background
+static GColor s_col_accent;        // teal accent (wordmark, fills, bars)
+static GColor s_col_on_accent;     // text drawn on an accent fill (contrast-safe)
+
 static AppState s_state = STATE_LOADING;
 static bool s_busy = false;          // reject new questions while mid-question
 static char s_instance_id[40];
@@ -44,6 +54,32 @@ static char s_idle_hint[48];         // hint line for the STATE_IDLE screen
 static void set_text(TextLayer *layer, const char *text) {
   text_layer_set_text(layer, text);
   layer_mark_dirty(text_layer_get_layer(layer));
+}
+
+// Watchface palette (mirrors watchface/src/c/guai.c apply_colors):
+// dark: bg black, fg white, muted 9AA3AD, accent 36B79F, panel navy 141C33;
+// light: bg white, fg 1B1F27, muted 5A6170, accent 1E9C82, panel F0F1F4.
+static void apply_colors(int theme) {
+  if (theme == 1) {
+    s_col_bg = GColorWhite;
+    s_col_fg = GColorFromHEX(0x1B1F27);
+    s_col_muted = GColorFromHEX(0x5A6170);
+    s_col_panel = GColorFromHEX(0xF0F1F4);
+    s_col_accent = GColorFromHEX(0x1E9C82);
+    s_col_on_accent = GColorWhite;
+  } else {
+    s_col_bg = GColorBlack;
+    s_col_fg = GColorWhite;
+    s_col_muted = GColorFromHEX(0x9AA3AD);
+    s_col_panel = GColorFromHEX(0x141C33);
+    s_col_accent = GColorFromHEX(0x36B79F);
+    s_col_on_accent = GColorFromHEX(0x1B1F27);
+  }
+  s_theme = theme;
+  if (s_window) window_set_background_color(s_window, s_col_bg);
+  if (s_title_layer) text_layer_set_text_color(s_title_layer, s_col_fg);
+  if (s_value_layer) text_layer_set_text_color(s_value_layer, s_col_fg);
+  if (s_hint_layer) text_layer_set_text_color(s_hint_layer, s_col_muted);
 }
 
 static void render(void) {
@@ -225,6 +261,15 @@ static void inbox_received(DictionaryIterator *iter, void *context) {
     // no pending check-ins from pkjs
     show_idle("No pending", "UP to refresh");
   }
+
+  // theme from the settings page (same pattern as the watchface)
+  Tuple *theme = dict_find(iter, MESSAGE_KEY_UI_THEME);
+  if (theme) {
+    int t = (int)theme->value->int32;
+    int old = s_theme;
+    apply_colors(t == 1 ? 1 : 0);
+    if (old != s_theme) render();
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -303,6 +348,7 @@ static void click_config_provider(void *context) {
 static void window_load(Window *window) {
   Layer *root = window_get_root_layer(window);
   GRect bounds = layer_get_bounds(root);
+  apply_colors(s_theme);
 
   s_title_layer = text_layer_create(GRect(12, 0, bounds.size.w - 24, 84));
   text_layer_set_background_color(s_title_layer, GColorClear);
@@ -320,7 +366,7 @@ static void window_load(Window *window) {
 
   s_hint_layer = text_layer_create(GRect(12, 138, bounds.size.w - 24, 30));
   text_layer_set_background_color(s_hint_layer, GColorClear);
-  text_layer_set_text_color(s_hint_layer, GColorWhite);
+  text_layer_set_text_color(s_hint_layer, s_col_muted);
   text_layer_set_font(s_hint_layer, fonts_get_system_font(FONT_KEY_GOTHIC_14));
   text_layer_set_text_alignment(s_hint_layer, GTextAlignmentCenter);
 
@@ -339,7 +385,7 @@ static void window_unload(Window *window) {
 
 static void init(void) {
   s_window = window_create();
-  window_set_background_color(s_window, GColorBlack);
+  apply_colors(s_theme);
   window_set_window_handlers(s_window, (WindowHandlers){
     .load = window_load,
     .unload = window_unload,
