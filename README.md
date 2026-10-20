@@ -12,12 +12,13 @@ Health data is deeply personal, yet most trackers either live in someone else's 
 
 ```mermaid
 flowchart LR
-    W[Pebble watchface] -->|activity + sleep + heart rate| S[GUAI server]
-    S <-->|check-ins: pending questions, answers| A[Pebble check-in app]
-    S -->|scheduled prompts| P[Pushover ping]
-    M[Open-Meteo] -->|weather for your location| S
-    S --> C[(SQLite database)]
-    C --> D[Web dashboard]
+    W[Pebble watchface] -->|activity + sleep + heart rate| E[Device instance<br/>token-protected]
+    A[Pebble check-in app] <-->|pending questions, answers| E
+    M[Open-Meteo] -->|weather for your location| I[Internal instance<br/>scheduler + migrations]
+    E <--> I
+    I --> C[(SQLite database<br/>shared volume)]
+    I -->|scheduled prompts| P[Pushover ping]
+    I --> D[Web dashboard<br/>trusted LAN only]
 ```
 
 The **watchface** reads Pebble's Health API each minute, sends snapshots to its JS layer, and uploads them (`POST /api/sync`, bearer token) with offline buffering and idempotent upserts. The **server** runs a one-minute tick in your timezone that materialises due check-in instances, marks missed ones after their answer window, and fires a *generic* Pushover ping. The **check-in app** pulls pending questions one at a time — toggle, stepper, or option list — and submits the answer straight from the watch. The **dashboard** (Zola + vanilla JS, hand-rolled SVG charts) aggregates everything per local day, computes statistics, and plots correlations.
@@ -55,7 +56,12 @@ progress counter, a light/dark theme of its own, and a confirm step before every
    docker compose logs -f guai
    ```
 
-The example Compose file pulls the published `ghcr.io/divin/guai` image (plain version tags; no local build needed) and maps host port `8080` to container port `8000`. Migrations run automatically at startup and are additive-only — your data is never touched by an upgrade beyond adding columns/tables. The dashboard and LAN API have **no login**, so keep GUAI on a trusted LAN or behind an authenticated reverse proxy; the three watch-facing endpoints require the bearer token, which is what makes them safe behind a TLS proxy for away-from-home syncing.
+The example Compose file pulls the published `ghcr.io/divin/guai` image (plain version tags; no local build needed) and runs **two instances from one image** sharing the SQLite file:
+
+- **`guai` (internal, port `8080`)** — the web dashboard and its management APIs (check-in definitions CRUD, CSV export, insights), the scheduler (one-minute tick, weather fetch, Pushover), and database migrations. **Trusted LAN only — do not expose.** The dashboard and LAN API have **no login**, which is safe precisely because this instance never touches the internet.
+- **`guai-device` (device, port `8081`)** — only the four token-protected endpoints the watchface and check-in app need (`POST /api/sync`, `GET /api/checkins/pending`, `POST /api/checkins/instances/{id}/responses`, `GET /api/weather/current`). No dashboard, no frontend, no scheduler. **This is the only instance to expose via reverse proxy/TLS.**
+
+Migrations run automatically at startup on the internal instance and are additive-only — your data is never touched by an upgrade beyond adding columns/tables; the device instance runs none (the shared SQLite file means both always agree). Prefer a single container? Set `GUAI_SERVER_MODE=full` (the default) on one service and skip the split — every mode composes from the same image.
 
 ## ⌚ Pebble setup
 
@@ -75,7 +81,7 @@ GUAI is installed with the current official app (Core Devices **"Pebble"** / **"
 
 > **Compatibility:** GUAI's Pebble apps are built for and only tested on the **Pebble Time 2 (emery platform)**. They may install on other platforms, but health metrics, layout, and sync behavior are only verified there — no other hardware is supported.
 
-Both apps ask once for a **Server URL** (e.g. `http://192.168.1.10:8080`) and the **token** from your `.env`. To (re)configure, tap the **⚙️ settings** icon next to the app in the Pebble mobile app and save the same fields. From then on the watchface uploads every minute while displayed and buffers offline data; the check-in app polls on open. To receive check-ins away from home, expose the server via HTTPS reverse proxy and point the apps at that URL.
+Both apps ask once for a **Server URL** and the **token** from your `.env`. At home that is the **device instance** (e.g. `http://192.168.1.10:8081`); away from home, expose `guai-device` via an HTTPS reverse proxy and point the apps at that URL — the internal instance stays on your LAN. To (re)configure, tap the **⚙️ settings** icon next to the app in the Pebble mobile app and save the same fields. From then on the watchface uploads every minute while displayed and buffers offline data; the check-in app polls on open.
 
 A check-in is worth defining when you want to remember something repeatedly: `Did you take your medication?` (boolean, daily 09:00 + 21:00), `How is your energy today?` (scale 1–10), `Headache?` (`No headache / Mild / Severe`). Each definition has an answer window (default 60 min — after that the instance is recorded as *missed*, which is itself data) and an optional single reminder ping.
 
