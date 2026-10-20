@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 from zoneinfo import ZoneInfo
 
 from pydantic import Field, field_validator, model_validator
@@ -46,6 +47,12 @@ class Settings(BaseSettings):
     static_dir: str = Field(default=_DEFAULT_STATIC_DIR, validation_alias="GUAI_STATIC_DIR")
     migrations_dir: str = Field(default="", validation_alias="GUAI_MIGRATIONS_DIR")
     enable_scheduler: bool = Field(default=True, validation_alias="GUAI_SCHEDULER")
+    # App shape: "full" (default, everything in one instance), "device" (only the
+    # token-protected endpoints the watchface/app need — the exposed instance), or
+    # "internal" (dashboard + management APIs, scheduler, migrations — LAN only).
+    server_mode: Literal["full", "device", "internal"] = Field(
+        default="full", validation_alias="GUAI_SERVER_MODE"
+    )
     pushover_token: str | None = Field(default=None, validation_alias="PUSHOVER_TOKEN")
     pushover_user: str | None = Field(default=None, validation_alias="PUSHOVER_USER")
 

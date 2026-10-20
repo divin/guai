@@ -1,15 +1,14 @@
-"""Check-in router.
+"""Check-in router — dashboard CRUD + reads (unauthenticated, trusted LAN).
 
-Dashboard CRUD + reads (unauthenticated, trusted LAN) and the two device endpoints
-(bearer-token protected): pending list and answer submission.
+The device-facing endpoints (pending list, answer submission) live in
+``routers/device.py`` and are mounted only in ``full``/``device`` modes.
 """
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Query, Request
 
-from guai_hub.deps import require_token
-from guai_hub.schemas import AnswerPayload, CheckinWrite
+from guai_hub.schemas import CheckinWrite
 from guai_hub.services import checkins
 
 router = APIRouter()
@@ -25,13 +24,6 @@ async def list_checkins(request: Request) -> list[dict]:
 @router.post("/checkins", status_code=201)
 async def create_checkin(payload: CheckinWrite, request: Request) -> dict:
     return await checkins.create_definition(request.app.state.db, payload)
-
-
-@router.get(
-    "/checkins/pending", dependencies=[Depends(require_token)]
-)  # must stay before /checkins/{checkin_id}
-async def pending_checkins(request: Request) -> list[dict]:
-    return await checkins.list_pending(request.app.state.db)
 
 
 @router.get("/checkins/{checkin_id}")
@@ -89,15 +81,3 @@ async def list_responses(
         from_utc=from_utc,
         to_utc=to_utc,
     )
-
-
-# --- Device endpoints (token-protected) ------------------------------------------
-
-
-@router.post("/checkins/instances/{instance_id}/responses", dependencies=[Depends(require_token)])
-async def submit_answer(
-    instance_id: str,
-    payload: AnswerPayload,
-    request: Request,
-) -> dict:
-    return await checkins.submit_response(request.app.state.db, instance_id, payload)

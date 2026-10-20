@@ -1,4 +1,10 @@
-"""FastAPI application factory, lifespan (migrate -> scheduler -> serve) and middlewares."""
+"""FastAPI application factory, lifespan (migrate -> scheduler -> serve) and middlewares.
+
+The factory composes the app by ``GUAI_SERVER_MODE``: ``full`` (default — everything in
+one instance), ``device`` (only the token-protected endpoints for the watchface/app —
+the exposed instance), or ``internal`` (dashboard + management APIs, frontend, scheduler,
+migrations — LAN only). See ``spec/roadmap.md`` step 12.
+"""
 
 from __future__ import annotations
 
@@ -15,9 +21,9 @@ from guai_hub.database import Database
 from guai_hub.migrations import run_migrations
 from guai_hub.routers import checkins as checkins_routes
 from guai_hub.routers import config as config_routes
+from guai_hub.routers import device as device_routes
 from guai_hub.routers import health as health_routes
 from guai_hub.routers import insights as insights_routes
-from guai_hub.routers import sync as sync_routes
 from guai_hub.routers import weather as weather_routes
 from guai_hub.scheduler import BackgroundJobs
 
@@ -63,26 +69,34 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return JSONResponse({"status": "error"}, status_code=503)
         return JSONResponse({"status": "ok"})
 
-    # API routers. Only /api/sync is token-protected; the rest are trusted-LAN.
-    app.include_router(sync_routes.router, prefix="/api")
-    app.include_router(config_routes.router, prefix="/api")
-    app.include_router(weather_routes.router, prefix="/api")
-    app.include_router(health_routes.router, prefix="/api")
-    app.include_router(insights_routes.router, prefix="/api")
-    app.include_router(checkins_routes.router, prefix="/api")
+    # API routers, composed by server mode. Only the device endpoints are
+    # token-protected; everything else is trusted-LAN.
+    if settings.server_mode in ("full", "device"):
+        app.include_router(device_routes.router, prefix="/api")
+    if settings.server_mode in ("full", "internal"):
+        app.include_router(config_routes.router, prefix="/api")
+        app.include_router(weather_routes.router, prefix="/api")
+        app.include_router(health_routes.router, prefix="/api")
+        app.include_router(insights_routes.router, prefix="/api")
+        app.include_router(checkins_routes.router, prefix="/api")
 
-    # Zola static site — mounted last so /healthz and /api routes win.
-    static_dir = Path(settings.static_dir)
-    if static_dir.is_dir():
-        app.mount("/", StaticFiles(directory=str(static_dir), html=True), name="static")
-    else:
+    # Zola static site — internal/full instances only; mounted last so /healthz
+    # and /api routes win. The exposed device instance serves no frontend.
+    if settings.server_mode != "device":
+        static_dir = Path(settings.static_dir)
+        if static_dir.is_dir():
+            app.mount("/", StaticFiles(directory=str(static_dir), html=True), name="static")
+        else:
 
-        @app.get("/")
-        async def root() -> JSONResponse:
-            return JSONResponse(
-                {"service": "guai-hub", "note": "frontend not built; run `just frontend-build`"},
-                status_code=200,
-            )
+            @app.get("/")
+            async def root() -> JSONResponse:
+                return JSONResponse(
+                    {
+                        "service": "guai-hub",
+                        "note": "frontend not built; run `just frontend-build`",
+                    },
+                    status_code=200,
+                )
 
     return app
 
