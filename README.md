@@ -22,12 +22,19 @@ flowchart LR
 
 The **watchface** reads Pebble's Health API each minute, sends snapshots to its JS layer, and uploads them (`POST /api/sync`, bearer token) with offline buffering and idempotent upserts. The **server** runs a one-minute tick in your timezone that materialises due check-in instances, marks missed ones after their answer window, and fires a *generic* Pushover ping. The **check-in app** pulls pending questions one at a time — toggle, stepper, or option list — and submits the answer straight from the watch. The **dashboard** (Zola + vanilla JS, hand-rolled SVG charts) aggregates everything per local day, computes statistics, and plots correlations.
 
-The watchface's bottom panel is fully user-configurable — each of the three slots can show **steps**, **sleep**, **active minutes**, or **live weather** (server data only, `--` when unavailable) — with a light/dark theme and an adjustable daily step goal, all from the settings gear:
+The watchface's bottom panel is fully user-configurable — each of the three slots can show **steps**, **sleep**, **active minutes**, or **live weather** (server data only, `--` when unavailable) — with a light/dark theme and an adjustable daily step goal, all from the settings gear. The
+**check-in app** uses the same visual language: mockup-faithful screens per answer type
+(YES/NO tiles, a big value with a segmented scale bar, scrolling option rows), a `N OF M`
+progress counter, a light/dark theme of its own, and a confirm step before every submission:
 
 <p align="center">
   <img src="assets/watchface-dark.png" width="200" alt="GUAI watchface, dark theme (default)">
   &nbsp;&nbsp;&nbsp;&nbsp;
   <img src="assets/watchface-light.png" width="200" alt="GUAI watchface, light theme">
+  &nbsp;&nbsp;&nbsp;&nbsp;
+  <img src="assets/app-dark.png" width="200" alt="GUAI check-in app, options screen (dark)">
+  &nbsp;&nbsp;&nbsp;&nbsp;
+  <img src="assets/app-light.png" width="200" alt="GUAI check-in app, scale screen (light)">
 </p>
 
 ## 🚀 Quick start
