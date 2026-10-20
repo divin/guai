@@ -470,7 +470,7 @@ static void window_load(Window *window) {
   text_layer_set_text_alignment(s_wordmark_layer, GTextAlignmentLeft);
   set_text(s_wordmark_layer, "GUAI");
 
-  s_clock_layer = text_layer_create(GRect(140, 4, 54, 22));
+  s_clock_layer = text_layer_create(GRect(114, 4, 54, 22));
   text_layer_set_background_color(s_clock_layer, GColorClear);
   text_layer_set_text_color(s_clock_layer, s_col_fg);
   text_layer_set_font(s_clock_layer, fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD));
