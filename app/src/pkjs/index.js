@@ -236,26 +236,34 @@ function configHtml() {
       '<style>' +
       'html{color-scheme:light}' +
       'body{background:#ffffff;color:#111111;font-family:sans-serif;padding:16px;max-width:480px;margin:0 auto}' +
-      'input,select{width:100%;box-sizing:border-box;padding:8px;font-size:16px;background:#ffffff;color:#111111;border:1px solid #999;border-radius:6px}' +
-      // Minimal webviews render the select's native arrow with a missing-glyph
-      // box; appearance:none removes it (the whole box stays tappable).
-      'select{-webkit-appearance:none;appearance:none;height:38px}' +
+      'input{width:100%;box-sizing:border-box;padding:8px;font-size:16px;background:#ffffff;color:#111111;border:1px solid #999;border-radius:6px}' +
       'button{margin-top:12px;padding:8px 16px;font-size:16px;background:#111111;color:#ffffff;border:0;border-radius:6px}' +
+      '.chiprow{margin:4px 0 10px}' +
+      '.chip{display:inline-block;margin:2px 8px 2px 0;padding:8px 14px;font-size:16px;background:#ffffff;color:#111111;border:1px solid #999;border-radius:6px}' +
+      '.chip.sel{background:#36b79f;color:#111111;border-color:#36b79f}' +
       '</style></head>' +
       '<body>' +
       '<h2>GUAI Check-In</h2>' +
       '<form id="f">' +
       '<label>Server URL<br><input id="srv" value="' + srv + '"></label><br><br>' +
       '<label>Token<br><input id="tok" value="' + tok + '"></label><br>' +
-      '<label>Theme<br><select id="theme">' +
-      '<option value="0"' + (readTheme() === 0 ? ' selected' : '') + '>Dark</option>' +
-      '<option value="1"' + (readTheme() === 1 ? ' selected' : '') + '>Light</option>' +
-      '</select></label><br><br>' +
+      // Chip buttons instead of a <select>: minimal webviews paint the select's
+      // native arrow with a missing-glyph box; plain buttons render everywhere.
+      '<label>Theme</label><div class="chiprow" id="themeChips">' +
+      '<button type="button" class="chip' + (readTheme() === 0 ? ' sel' : '') + '" data-v="0">Dark</button>' +
+      '<button type="button" class="chip' + (readTheme() === 1 ? ' sel' : '') + '" data-v="1">Light</button>' +
+      '</div>' +
       '<button type="submit">Save</button></form>' +
-      '<script>document.getElementById("f").onsubmit=function(){' +
+      '<script>' +
+      'var theme=' + readTheme() + ';' +
+      '(function(){var bs=document.getElementById("themeChips").getElementsByTagName("button");' +
+      'for(var i=0;i<bs.length;i++){bs[i].onclick=function(){' +
+      'for(var j=0;j<bs.length;j++)bs[j].className="chip";' +
+      'this.className="chip sel";theme=parseInt(this.getAttribute("data-v"),10);}}})();' +
+      'document.getElementById("f").onsubmit=function(){' +
       'var send=function(){var opts={srv:document.getElementById("srv").value,' +
       'tok:document.getElementById("tok").value,' +
-      'theme:parseInt(document.getElementById("theme").value,10)};location.href=' +
+      'theme:theme};location.href=' +
       '"pebblejs://close#"+encodeURIComponent(JSON.stringify(opts))};' +
       'setTimeout(send,100);return false;};<\/script></body></html>'
     );

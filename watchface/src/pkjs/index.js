@@ -282,11 +282,13 @@ function configHtml(name) {
   var tok = htmlEscape(localStorage.getItem(TOKEN_KEY) || "");
   var slots = readSlots();
   var names = ["Steps", "Sleep", "Active", "Weather"];
-  var slotSel = function (idx) {
-    return '<select id="slot' + idx + '">' +
-      names.map(function (n, i) {
-        return '<option value="' + i + '"' + (slots[idx] === i ? ' selected' : '') + '>' + n + '</option>';
-      }).join("") + '</select>';
+  // Chip rows instead of <select>: minimal webviews render the select's native
+  // arrow with a missing-glyph box. Plain buttons render everywhere.
+  var chips = function (id, values, labels, current) {
+    return '<span id="' + id + '">' + values.map(function (v, i) {
+      return '<button type="button" class="chip' + (current === v ? ' sel' : '') +
+        '" data-v="' + v + '">' + labels[i] + '</button>';
+    }).join("") + '</span>';
   };
   return "data:text/html;charset=utf-8," +
     encodeURIComponent(
@@ -298,30 +300,35 @@ function configHtml(name) {
       '<style>' +
       'html{color-scheme:light}' +
       'body{background:#ffffff;color:#111111;font-family:sans-serif;padding:16px;max-width:480px;margin:0 auto}' +
-      'input,select{width:100%;box-sizing:border-box;padding:8px;font-size:16px;background:#ffffff;color:#111111;border:1px solid #999;border-radius:6px}' +
+      'input{width:100%;box-sizing:border-box;padding:8px;font-size:16px;background:#ffffff;color:#111111;border:1px solid #999;border-radius:6px}' +
       'button{margin-top:12px;padding:8px 16px;font-size:16px;background:#111111;color:#ffffff;border:0;border-radius:6px}' +
+      '.chiprow{margin:4px 0 10px}' +
+      '.chip{display:inline-block;margin:2px 8px 2px 0;padding:8px 14px;font-size:16px;background:#ffffff;color:#111111;border:1px solid #999;border-radius:6px}' +
+      '.chip.sel{background:#36b79f;color:#111111;border-color:#36b79f}' +
       '</style></head>' +
       '<body>' +
       '<h2>GUAI</h2>' +
       '<form id="f">' +
       '<label>Server URL<br><input id="srv" value="' + srv + '"></label><br><br>' +
       '<label>Token<br><input id="tok" value="' + tok + '"></label><br><br>' +
-      '<label>Panel slot 1<br>' + slotSel(0) + '</label><br>' +
-      '<label>Panel slot 2<br>' + slotSel(1) + '</label><br>' +
-      '<label>Panel slot 3<br>' + slotSel(2) + '</label><br>' +
-      '<label>Theme<br><select id="theme">' +
-      '<option value="0"' + (readTheme() === 0 ? ' selected' : '') + '>Dark</option>' +
-      '<option value="1"' + (readTheme() === 1 ? ' selected' : '') + '>Light</option>' +
-      '</select></label><br>' +
+      '<label>Panel slot 1</label><div class="chiprow">' + chips("slot0", [0,1,2,3], names, slots[0]) + '</div>' +
+      '<label>Panel slot 2</label><div class="chiprow">' + chips("slot1", [0,1,2,3], names, slots[1]) + '</div>' +
+      '<label>Panel slot 3</label><div class="chiprow">' + chips("slot2", [0,1,2,3], names, slots[2]) + '</div>' +
+      '<label>Theme</label><div class="chiprow">' + chips("theme", [0,1], ["Dark","Light"], readTheme()) + '</div>' +
       '<label>Step goal (steps/day)<br><input id="goal" type="number" min="1000" max="100000" step="500" value="' + readGoal() + '"></label><br><br>' +
       '<button type="submit">Save</button></form>' +
-      '<script>document.getElementById("f").onsubmit=function(){' +
+      '<script>' +
+      'var state={slot0:' + slots[0] + ',slot1:' + slots[1] + ',slot2:' + slots[2] + ',theme:' + readTheme() + '};' +
+      '["slot0","slot1","slot2","theme"].forEach(function(id){' +
+      'var bs=document.getElementById(id).getElementsByTagName("button");' +
+      'for(var i=0;i<bs.length;i++){bs[i].onclick=function(){' +
+      'for(var j=0;j<bs.length;j++)bs[j].className="chip";' +
+      'this.className="chip sel";state[id]=parseInt(this.getAttribute("data-v"),10);}}});' +
+      'document.getElementById("f").onsubmit=function(){' +
       'var send=function(){var opts={srv:document.getElementById("srv").value,' +
       'tok:document.getElementById("tok").value,' +
-      'slots:[parseInt(document.getElementById("slot0").value,10),' +
-      'parseInt(document.getElementById("slot1").value,10),' +
-      'parseInt(document.getElementById("slot2").value,10)],' +
-      'theme:parseInt(document.getElementById("theme").value,10),' +
+      'slots:[state.slot0,state.slot1,state.slot2],' +
+      'theme:state.theme,' +
       'goal:parseInt(document.getElementById("goal").value,10)};location.href=' +
       '"pebblejs://close#"+encodeURIComponent(JSON.stringify(opts))};' +
       'setTimeout(send,100);return false;};<\/script></body></html>'
