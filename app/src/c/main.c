@@ -22,7 +22,8 @@ typedef enum {
 
 static Window *s_window;
 static Layer *s_chrome_layer;        // canvas: button rail, glyphs, divider, counter bar
-static Layer *s_tiles_layer;         // canvas: boolean YES/NO tiles
+static Layer *s_qcanvas_layer;       // canvas: boolean tiles / scale number + bar
+static GFont s_font_big;             // FONT_TIME_40 for the scale digit
 static TextLayer *s_wordmark_layer;
 static TextLayer *s_clock_layer;     // "HH:MM" 24h clock, top right
 static TextLayer *s_counter_layer;   // "N OF M" question counter
@@ -88,7 +89,7 @@ static void apply_colors(int theme) {
   s_theme = theme;
   if (s_window) window_set_background_color(s_window, s_col_bg);
   if (s_chrome_layer) layer_mark_dirty(s_chrome_layer);
-  if (s_tiles_layer) layer_mark_dirty(s_tiles_layer);
+  if (s_qcanvas_layer) layer_mark_dirty(s_qcanvas_layer);
   if (s_wordmark_layer) text_layer_set_text_color(s_wordmark_layer, s_col_accent);
   if (s_clock_layer) text_layer_set_text_color(s_clock_layer, s_col_fg);
   if (s_counter_layer) text_layer_set_text_color(s_counter_layer, s_col_accent);
@@ -127,10 +128,8 @@ static void render(void) {
         set_text(s_value_layer, "");   // YES/NO tiles replace the value text
         set_text(s_footer1_layer, "UP / DOWN CHOOSE");
       } else if (strcmp(s_answer_type, "scale") == 0) {
-        static char buf[16];
-        snprintf(buf, sizeof(buf), "%d", s_selection);
-        set_text(s_value_layer, buf);
-        set_text(s_footer1_layer, "UP / DOWN VALUE");
+        set_text(s_value_layer, "");   // big digit + segmented bar on the canvas
+        set_text(s_footer1_layer, "UP / DOWN ADJUST");
       } else {
         set_text(s_value_layer, s_options[s_selection]);
         set_text(s_footer1_layer, "UP / DOWN OPTION");
@@ -174,8 +173,9 @@ static void render(void) {
     int ly = 52 + th + 6;
     layer_set_frame(text_layer_get_layer(s_anslabel_layer), GRect(10, ly, w, 16));
     layer_set_frame(text_layer_get_layer(s_value_layer), GRect(10, ly + 18, w, 30));
-  } else if (s_state == STATE_SELECT && strcmp(s_answer_type, "boolean") == 0) {
-    // value text hidden — the tile canvas shows the selection
+  } else if (s_state == STATE_SELECT && (strcmp(s_answer_type, "boolean") == 0 ||
+                                         strcmp(s_answer_type, "scale") == 0)) {
+    // value text hidden — the question canvas shows the selection
   } else if (s_state == STATE_SELECT || s_state == STATE_SENDING ||
              s_state == STATE_FEEDBACK) {
     GSize ts = text_layer_get_content_size(s_title_layer);
@@ -187,7 +187,7 @@ static void render(void) {
   } else {
     layer_set_frame(text_layer_get_layer(s_value_layer), GRect(10, 100, w, 46));
   }
-  layer_mark_dirty(s_tiles_layer);   // tiles track state + title layout
+  layer_mark_dirty(s_qcanvas_layer);   // canvas tracks state + title layout
 }
 
 // Idle/status screen (no question on display): unconfigured, no pending, skipped.
@@ -226,6 +226,16 @@ static void request_next(void) {
   if (res != APP_MSG_OK) return;
   dict_write_cstring(iter, MESSAGE_KEY_REQUEST, "next");
   app_message_outbox_send();
+}
+
+// UP doubles as "refresh" when no question is on screen; with key repeat
+// subscribed, cap refreshes to one per second while the button is held.
+static void request_next_guarded(void) {
+  static time_t last = 0;
+  time_t now = time(NULL);
+  if (now == last) return;
+  last = now;
+  request_next();
 }
 
 static void show_state_and_next_after(void *data) {
@@ -366,12 +376,12 @@ static void up_click(ClickRecognizerRef recognizer, void *context) {
       adjust(1);
     } else {
       // no question on screen: UP re-checks the server
-      request_next();
+      request_next_guarded();
     }
     return;
   }
   if (s_state == STATE_FEEDBACK || s_state == STATE_LOADING || s_state == STATE_IDLE) {
-    request_next();  // manual refresh
+    request_next_guarded();  // manual refresh
   }
 }
 
@@ -409,18 +419,20 @@ static void back_click(ClickRecognizerRef recognizer, void *context) {
 }
 
 static void click_config_provider(void *context) {
-  window_single_click_subscribe(BUTTON_ID_UP, up_click);
-  window_single_click_subscribe(BUTTON_ID_DOWN, down_click);
+  // repeating subscriptions: hold UP/DOWN to run through scale values
+  window_single_repeating_click_subscribe(BUTTON_ID_UP, 350, up_click);
+  window_single_repeating_click_subscribe(BUTTON_ID_DOWN, 350, down_click);
   window_single_click_subscribe(BUTTON_ID_SELECT, select_click);
   window_single_click_subscribe(BUTTON_ID_BACK, back_click);
 }
 
 // ---------------------------------------------------------------------------
-// Boolean YES/NO tiles (mockup: selected = accent fill + on-accent label,
-// unselected = transparent with fg border + fg label). UP/DOWN toggles.
+// Question canvas: boolean YES/NO tiles + scale number/segmented bar.
+// Both are mockup-faithful and drawn with graphics primitives (no bitmaps).
 
-static bool tiles_visible(void) {
-  return s_state == STATE_SELECT && strcmp(s_answer_type, "boolean") == 0;
+static bool qcanvas_visible(void) {
+  return s_state == STATE_SELECT && (strcmp(s_answer_type, "boolean") == 0 ||
+                                     strcmp(s_answer_type, "scale") == 0);
 }
 
 static void draw_tile(GContext *ctx, GRect r, const char *label, bool selected) {
@@ -440,10 +452,7 @@ static void draw_tile(GContext *ctx, GRect r, const char *label, bool selected) 
                      GTextOverflowModeWordWrap, GTextAlignmentCenter, NULL);
 }
 
-static void tiles_update_proc(Layer *layer, GContext *ctx) {
-  (void)layer;
-  if (!tiles_visible()) return;
-  GRect bounds = layer_get_bounds(layer);
+static void draw_tiles(GContext *ctx, GRect bounds) {
   GSize ts = text_layer_get_content_size(s_title_layer);
   int th_title = (int)ts.h;
   if (th_title < 10) th_title = 28;   // fallback until the title has laid out
@@ -454,6 +463,76 @@ static void tiles_update_proc(Layer *layer, GContext *ctx) {
   int tw = (bounds.size.w - 24 - 20 - 8) / 2;  // 10px margins each side + 8px gap
   draw_tile(ctx, GRect(10, ty, tw, th), "YES", s_selection == 1);
   draw_tile(ctx, GRect(10 + tw + 8, ty, tw, th), "NO", s_selection == 0);
+}
+
+// Big digit (FONT_TIME_40) above a segmented bar: one segment per step from
+// SCALE_MIN to SCALE_MAX; filled up to the selection, accent outline beyond;
+// min/max labels at the ends. Many-step scales fall back to a continuous bar.
+static void draw_scale(GContext *ctx, GRect bounds) {
+  GSize ts = text_layer_get_content_size(s_title_layer);
+  int th_title = (int)ts.h;
+  if (th_title < 10) th_title = 28;
+  int y = 52 + th_title + 4;
+  int block = 48 + 2 + 12 + 2 + 16;   // number box + bar + labels with gaps
+  int avail = 186 - y;
+  if (avail > block) y += (avail - block) / 2;   // center the block vertically
+  if (y > 132) y = 132;
+
+  static char nbuf[8];
+  snprintf(nbuf, sizeof(nbuf), "%d", s_selection);
+  graphics_context_set_text_color(ctx, s_col_fg);
+  graphics_draw_text(ctx, nbuf, s_font_big, GRect(0, y, bounds.size.w - 24, 48),
+                     GTextOverflowModeWordWrap, GTextAlignmentCenter, NULL);
+
+  int bar_y = y + 50;
+  int n = s_scale_max - s_scale_min + 1;
+  if (n >= 2 && n <= 24) {
+    int gap = 2;
+    int seg_w = (156 - (n - 1) * gap) / n;
+    if (seg_w < 4) seg_w = 4;
+    int total = n * seg_w + (n - 1) * gap;
+    int x0 = 10 + (156 - total) / 2;
+    graphics_context_set_stroke_color(ctx, s_col_accent);
+    graphics_context_set_fill_color(ctx, s_col_accent);
+    for (int i = 0; i < n; i++) {
+      int sx = x0 + i * (seg_w + gap);
+      if (s_scale_min + i <= s_selection) {
+        graphics_fill_rect(ctx, GRect(sx, bar_y, seg_w, 12), 0, GCornerNone);
+      } else {
+        graphics_draw_rect(ctx, GRect(sx, bar_y, seg_w, 12));
+      }
+    }
+    static char lmin[8], lmax[8];
+    snprintf(lmin, sizeof(lmin), "%d", s_scale_min);
+    snprintf(lmax, sizeof(lmax), "%d", s_scale_max);
+    graphics_context_set_text_color(ctx, s_col_muted);
+    graphics_draw_text(ctx, lmin, fonts_get_system_font(FONT_KEY_GOTHIC_14),
+                       GRect(0, bar_y + 14, 40, 16), GTextOverflowModeWordWrap,
+                       GTextAlignmentLeft, NULL);
+    graphics_draw_text(ctx, lmax, fonts_get_system_font(FONT_KEY_GOTHIC_14),
+                       GRect(bounds.size.w - 64, bar_y + 14, 40, 16),
+                       GTextOverflowModeWordWrap, GTextAlignmentRight, NULL);
+  } else {
+    // many steps: continuous track with proportional fill
+    graphics_context_set_stroke_color(ctx, s_col_accent);
+    graphics_draw_rect(ctx, GRect(10, bar_y, 156, 12));
+    int span = s_scale_max - s_scale_min;
+    if (span > 0) {
+      int fw = 156 * (s_selection - s_scale_min) / span;
+      if (fw > 0) {
+        graphics_context_set_fill_color(ctx, s_col_accent);
+        graphics_fill_rect(ctx, GRect(10, bar_y, fw, 12), 0, GCornerNone);
+      }
+    }
+  }
+}
+
+static void qcanvas_update_proc(Layer *layer, GContext *ctx) {
+  (void)layer;
+  if (!qcanvas_visible()) return;
+  GRect bounds = layer_get_bounds(layer);
+  if (strcmp(s_answer_type, "boolean") == 0) draw_tiles(ctx, bounds);
+  else draw_scale(ctx, bounds);
 }
 
 // ---------------------------------------------------------------------------
@@ -527,10 +606,13 @@ static void window_load(Window *window) {
   layer_set_update_proc(s_chrome_layer, chrome_update_proc);
   layer_add_child(root, s_chrome_layer);
 
-  // boolean tile canvas (draws only on boolean questions)
-  s_tiles_layer = layer_create(bounds);
-  layer_set_update_proc(s_tiles_layer, tiles_update_proc);
-  layer_add_child(root, s_tiles_layer);
+  // question canvas (draws only on boolean/scale questions)
+  s_qcanvas_layer = layer_create(bounds);
+  layer_set_update_proc(s_qcanvas_layer, qcanvas_update_proc);
+  layer_add_child(root, s_qcanvas_layer);
+
+  // big scale digit font (same TTF the watchface clock uses, compiled at 40px)
+  s_font_big = fonts_load_custom_font(resource_get_handle(RESOURCE_ID_FONT_TIME_40));
 
   // header: GUAI wordmark (accent) + 24h clock (hours and minutes identical)
   s_wordmark_layer = text_layer_create(GRect(8, 3, 60, 22));
@@ -605,8 +687,9 @@ static void window_load(Window *window) {
 
 static void window_unload(Window *window) {
   tick_timer_service_unsubscribe();
+  fonts_unload_custom_font(s_font_big);
   layer_destroy(s_chrome_layer);
-  layer_destroy(s_tiles_layer);
+  layer_destroy(s_qcanvas_layer);
   text_layer_destroy(s_wordmark_layer);
   text_layer_destroy(s_clock_layer);
   text_layer_destroy(s_counter_layer);

@@ -2,7 +2,10 @@
   "name": "guai-checkin",
   "author": "Divin Gavran",
   "version": "1.2.0",
-  "keywords": ["pebble-app", "checkin"],
+  "keywords": [
+    "pebble-app",
+    "checkin"
+  ],
   "private": true,
   "dependencies": {},
   "pebble": {
@@ -10,7 +13,9 @@
     "uuid": "70f54c97-07c2-404e-b093-37dd80c5f4cd",
     "sdkVersion": "3",
     "enableMultiJS": true,
-    "capabilities": ["configurable"],
+    "capabilities": [
+      "configurable"
+    ],
     "targetPlatforms": [
       "emery"
     ],
@@ -35,7 +40,13 @@
       "UI_THEME"
     ],
     "resources": {
-      "media": []
+      "media": [
+        {
+          "file": "fonts/time-bold.ttf",
+          "name": "FONT_TIME_40",
+          "type": "font"
+        }
+      ]
     }
   }
 }
