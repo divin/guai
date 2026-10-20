@@ -289,7 +289,8 @@ static void handle_status(DictionaryIterator *iter) {
   Tuple *status = dict_find(iter, MESSAGE_KEY_STATUS_TEXT);
   if (!status) return;
   const char *s = status->value->cstring;
-  if (strcmp(s, "ok") == 0) snprintf(s_last_status, sizeof(s_last_status), "Saved ✓");
+  // Pebble system fonts have no U+2713 glyph — plain ASCII only here.
+  if (strcmp(s, "ok") == 0) snprintf(s_last_status, sizeof(s_last_status), "Saved!");
   else if (strcmp(s, "already") == 0) snprintf(s_last_status, sizeof(s_last_status), "Already submitted");
   else if (strcmp(s, "too_late") == 0) snprintf(s_last_status, sizeof(s_last_status), "Too late");
   else snprintf(s_last_status, sizeof(s_last_status), "Retrying…");
