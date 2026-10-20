@@ -32,12 +32,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     """Build the application. ``settings`` defaults to the process environment."""
     settings = settings or get_settings()
     db = Database(settings.db_path)
-    jobs = BackgroundJobs(settings, db) if settings.enable_scheduler else None
+    # Single-writer discipline: the exposed device instance runs no scheduler even
+    # if misconfigured — the tick, weather fetch, and Pushover belong to the
+    # primary (full/internal) instance only.
+    primary = settings.server_mode != "device"
+    jobs = BackgroundJobs(settings, db) if settings.enable_scheduler and primary else None
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        # Single-worker design: migrations run before serving (idempotent at head).
-        run_migrations(settings.db_path)
+        # Only the primary instance migrates; two instances share the SQLite file,
+        # and racing Alembic on startup is exactly what this avoids. Migrations are
+        # idempotent at head, so the primary re-checks cheaply on every start.
+        if primary:
+            run_migrations(settings.db_path)
         await db.ping()
         if jobs is not None:
             jobs.start()

@@ -86,6 +86,10 @@ def test_full_mode_keeps_both_surfaces(monkeypatch, tmp_path):
 
 
 def test_device_mode_rejects_bad_token(monkeypatch, tmp_path):
+    # production order: the primary migrates before the device instance serves
+    from guai_hub.migrations import run_migrations
+
+    run_migrations(str(tmp_path / "guai.sqlite3"))
     with _client(monkeypatch, tmp_path, "device") as client:
         assert (
             client.get(
@@ -119,3 +123,107 @@ def test_device_mode_skips_root_fallback(monkeypatch, tmp_path):
         assert client.get("/").status_code == 200
     with _client(monkeypatch, tmp_path, "device") as client:
         assert client.get("/").status_code == 404
+
+
+# --- 12.2: single-writer discipline (migrations + scheduler in the primary only) ---
+
+
+_spy_started: list = []
+_spy_stopped: list = []
+
+
+class _SpyJobs:
+    """Stands in for BackgroundJobs so tests never start real timers."""
+
+    def __init__(self, settings, db):
+        _spy_started.append(self)
+
+    def start(self):
+        pass
+
+    async def shutdown(self):
+        _spy_stopped.append(self)
+
+
+def _watch_lifespan(monkeypatch):
+    """Record run_migrations calls; swap BackgroundJobs for the spy."""
+    import guai_hub.main as main_mod
+
+    real = main_mod.run_migrations
+    calls = []
+
+    def spy(path):
+        calls.append(path)
+        return real(path)  # wrap, don't replace — the DB must still be migrated
+
+    monkeypatch.setattr(main_mod, "run_migrations", spy)
+    monkeypatch.setattr(main_mod, "BackgroundJobs", _SpyJobs)
+    _spy_started.clear()
+    _spy_stopped.clear()
+    return calls
+
+
+def _mode_env(monkeypatch, tmp_path, mode, scheduler="0"):
+    monkeypatch.setenv("TZ", "UTC")
+    monkeypatch.setenv("GUAI_SYNC_TOKEN", TOKEN)
+    monkeypatch.setenv("GUAI_DB_PATH", str(tmp_path / "guai.sqlite3"))
+    monkeypatch.setenv("GUAI_SCHEDULER", scheduler)
+    monkeypatch.setenv("GUAI_SERVER_MODE", mode)
+    return Settings()
+
+
+def test_device_mode_never_migrates_or_schedules(monkeypatch, tmp_path):
+    calls = _watch_lifespan(monkeypatch)
+    monkeypatch.setenv("GUAI_DB_PATH", str(tmp_path / "guai.sqlite3"))
+    monkeypatch.setenv("GUAI_SCHEDULER", "1")  # even misconfigured: no scheduler
+    monkeypatch.setenv("GUAI_SERVER_MODE", "device")
+    from fastapi.testclient import TestClient
+
+    with TestClient(create_app(Settings())):
+        pass
+    assert calls == []  # no migrations
+    assert _spy_started == []  # no scheduler
+
+
+def test_primary_mode_migrates_and_schedules(monkeypatch, tmp_path):
+    calls = _watch_lifespan(monkeypatch)
+    monkeypatch.setenv("GUAI_DB_PATH", str(tmp_path / "guai.sqlite3"))
+    monkeypatch.setenv("GUAI_SCHEDULER", "1")
+    monkeypatch.setenv("GUAI_SERVER_MODE", "internal")
+    from fastapi.testclient import TestClient
+
+    with TestClient(create_app(Settings())):
+        pass
+    assert len(calls) == 1  # migrations ran
+    assert len(_spy_started) == 1  # scheduler started
+    assert len(_spy_stopped) == 1  # and shut down cleanly
+
+
+def test_two_instances_one_database(monkeypatch, tmp_path):
+    """The deployment shape: primary (internal) + device app sharing one SQLite file."""
+    from contextlib import ExitStack
+
+    from fastapi.testclient import TestClient
+
+    calls = _watch_lifespan(monkeypatch)
+    shared = tmp_path / "shared.sqlite3"
+    monkeypatch.setenv("TZ", "UTC")
+    monkeypatch.setenv("GUAI_SYNC_TOKEN", TOKEN)
+    monkeypatch.setenv("GUAI_DB_PATH", str(shared))
+    monkeypatch.setenv("GUAI_SCHEDULER", "1")
+
+    with ExitStack() as stack:
+        # primary instance: internal mode (migrations + scheduler live here)
+        monkeypatch.setenv("GUAI_SERVER_MODE", "internal")
+        primary = stack.enter_context(TestClient(create_app(Settings())))
+        # exposed instance: device mode
+        monkeypatch.setenv("GUAI_SERVER_MODE", "device")
+        device = stack.enter_context(TestClient(create_app(Settings())))
+
+        # the app appears on the primary's dashboard APIs...
+        assert primary.get("/api/checkins").status_code == 200
+        # ...the device instance serves devices and shares the same DB state
+        assert device.get("/healthz").status_code == 200
+
+    # discipline held: migrations ran exactly once (primary), device ran none
+    assert calls == [str(shared)]
