@@ -33,6 +33,10 @@ static int s_wx_temp_x10 = 0;
 #define STEP_GOAL_MIN 1000
 #define STEP_GOAL_MAX 100000
 
+#define SYNC_INTERVAL_DEFAULT 1  // minutes between health snapshots/uploads
+#define SYNC_INTERVAL_MIN 1
+#define SYNC_INTERVAL_MAX 60
+
 // Theme state and palette: 0 = dark (default), 1 = light.
 static int s_theme = 0;
 static GColor s_col_bg;
@@ -71,6 +75,8 @@ static int s_steps = 0;
 static int s_sleep_min = 0;
 static int s_active_min = 0;
 static int s_step_goal = STEP_GOAL_DEFAULT;  // user-adjustable via settings
+static int s_sync_interval = SYNC_INTERVAL_DEFAULT;  // minutes between snapshots (settings)
+static int s_minutes_since_sync = 0;
 
 static void apply_theme(int theme);
 
@@ -265,10 +271,11 @@ static void update_time(void) {
 
 #ifdef PBL_HEALTH
 static void health_handler(HealthEventType event, void *context) {
+  // display only — snapshots are gated by s_sync_interval in the tick handler;
+  // sending here would defeat the upload interval (HR/step events fire often)
   update_hr();
   update_stats();
   update_panel();
-  send_health();
 }
 #endif
 
@@ -294,7 +301,12 @@ static void tick_handler(struct tm *tick_time, TimeUnits units_changed) {
     update_hr();
     update_panel();
 #ifdef PBL_HEALTH
-    send_health();
+    // Snapshots/uploads run every s_sync_interval minutes (settings); the
+    // display keeps updating every minute.
+    if (++s_minutes_since_sync >= s_sync_interval) {
+      s_minutes_since_sync = 0;
+      send_health();
+    }
 #endif
   }
 }
@@ -343,6 +355,14 @@ static void inbox_received(DictionaryIterator *iter, void *context) {
       s_slots[i] = (v >= 0 && v <= 3) ? v : 0;
       slots_changed = true;
     }
+  }
+
+  // upload interval from the settings page (minutes between health snapshots)
+  Tuple *interval = dict_find(iter, MESSAGE_KEY_SYNC_INTERVAL);
+  if (interval) {
+    int i = (int)interval->value->int32;
+    s_sync_interval = (i < SYNC_INTERVAL_MIN) ? SYNC_INTERVAL_MIN
+                      : (i > SYNC_INTERVAL_MAX) ? SYNC_INTERVAL_MAX : i;
   }
 
   // daily step goal from the settings page (drives the progress bar)

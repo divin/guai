@@ -38,7 +38,8 @@
       "PANEL_SLOT_B",
       "PANEL_SLOT_C",
       "UI_THEME",
-      "STEP_GOAL"
+      "STEP_GOAL",
+      "SYNC_INTERVAL"
     ],
     "resources": {
       "media": [
