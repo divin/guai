@@ -22,6 +22,7 @@ typedef enum {
 
 static Window *s_window;
 static Layer *s_chrome_layer;        // canvas: button rail, glyphs, divider, counter bar
+static Layer *s_tiles_layer;         // canvas: boolean YES/NO tiles
 static TextLayer *s_wordmark_layer;
 static TextLayer *s_clock_layer;     // "HH:MM" 24h clock, top right
 static TextLayer *s_counter_layer;   // "N OF M" question counter
@@ -87,6 +88,7 @@ static void apply_colors(int theme) {
   s_theme = theme;
   if (s_window) window_set_background_color(s_window, s_col_bg);
   if (s_chrome_layer) layer_mark_dirty(s_chrome_layer);
+  if (s_tiles_layer) layer_mark_dirty(s_tiles_layer);
   if (s_wordmark_layer) text_layer_set_text_color(s_wordmark_layer, s_col_accent);
   if (s_clock_layer) text_layer_set_text_color(s_clock_layer, s_col_fg);
   if (s_counter_layer) text_layer_set_text_color(s_counter_layer, s_col_accent);
@@ -122,7 +124,7 @@ static void render(void) {
     case STATE_SELECT:
       set_text(s_title_layer, s_question);
       if (strcmp(s_answer_type, "boolean") == 0) {
-        set_text(s_value_layer, s_selection ? "Yes" : "No");
+        set_text(s_value_layer, "");   // YES/NO tiles replace the value text
         set_text(s_footer1_layer, "UP / DOWN CHOOSE");
       } else if (strcmp(s_answer_type, "scale") == 0) {
         static char buf[16];
@@ -172,6 +174,8 @@ static void render(void) {
     int ly = 52 + th + 6;
     layer_set_frame(text_layer_get_layer(s_anslabel_layer), GRect(10, ly, w, 16));
     layer_set_frame(text_layer_get_layer(s_value_layer), GRect(10, ly + 18, w, 30));
+  } else if (s_state == STATE_SELECT && strcmp(s_answer_type, "boolean") == 0) {
+    // value text hidden — the tile canvas shows the selection
   } else if (s_state == STATE_SELECT || s_state == STATE_SENDING ||
              s_state == STATE_FEEDBACK) {
     GSize ts = text_layer_get_content_size(s_title_layer);
@@ -183,6 +187,7 @@ static void render(void) {
   } else {
     layer_set_frame(text_layer_get_layer(s_value_layer), GRect(10, 100, w, 46));
   }
+  layer_mark_dirty(s_tiles_layer);   // tiles track state + title layout
 }
 
 // Idle/status screen (no question on display): unconfigured, no pending, skipped.
@@ -411,6 +416,47 @@ static void click_config_provider(void *context) {
 }
 
 // ---------------------------------------------------------------------------
+// Boolean YES/NO tiles (mockup: selected = accent fill + on-accent label,
+// unselected = transparent with fg border + fg label). UP/DOWN toggles.
+
+static bool tiles_visible(void) {
+  return s_state == STATE_SELECT && strcmp(s_answer_type, "boolean") == 0;
+}
+
+static void draw_tile(GContext *ctx, GRect r, const char *label, bool selected) {
+  if (selected) {
+    graphics_context_set_fill_color(ctx, s_col_accent);
+    graphics_fill_rect(ctx, r, 0, GCornerNone);
+    graphics_context_set_text_color(ctx, s_col_on_accent);
+  } else {
+    graphics_context_set_stroke_color(ctx, s_col_fg);
+    graphics_draw_rect(ctx, r);
+    graphics_draw_rect(ctx, GRect(r.origin.x + 1, r.origin.y + 1,
+                                  r.size.w - 2, r.size.h - 2));  // 2px border
+    graphics_context_set_text_color(ctx, s_col_fg);
+  }
+  graphics_draw_text(ctx, label, fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD),
+                     GRect(r.origin.x, r.origin.y + 2, r.size.w, r.size.h - 4),
+                     GTextOverflowModeWordWrap, GTextAlignmentCenter, NULL);
+}
+
+static void tiles_update_proc(Layer *layer, GContext *ctx) {
+  (void)layer;
+  if (!tiles_visible()) return;
+  GRect bounds = layer_get_bounds(layer);
+  GSize ts = text_layer_get_content_size(s_title_layer);
+  int th_title = (int)ts.h;
+  if (th_title < 10) th_title = 28;   // fallback until the title has laid out
+  int ty = 52 + th_title + 8;
+  int th = 186 - ty;                  // fill down to the footer
+  if (th > 74) th = 74;
+  if (th < 40) th = 40;
+  int tw = (bounds.size.w - 24 - 20 - 8) / 2;  // 10px margins each side + 8px gap
+  draw_tile(ctx, GRect(10, ty, tw, th), "YES", s_selection == 1);
+  draw_tile(ctx, GRect(10 + tw + 8, ty, tw, th), "NO", s_selection == 0);
+}
+
+// ---------------------------------------------------------------------------
 // Chrome canvas: button rail + glyphs + header divider + counter underline.
 // The rail sits on the right edge, glyph positions hint at the physical
 // UP / SELECT / DOWN buttons (middle-right of the watch).
@@ -480,6 +526,11 @@ static void window_load(Window *window) {
   s_chrome_layer = layer_create(bounds);
   layer_set_update_proc(s_chrome_layer, chrome_update_proc);
   layer_add_child(root, s_chrome_layer);
+
+  // boolean tile canvas (draws only on boolean questions)
+  s_tiles_layer = layer_create(bounds);
+  layer_set_update_proc(s_tiles_layer, tiles_update_proc);
+  layer_add_child(root, s_tiles_layer);
 
   // header: GUAI wordmark (accent) + 24h clock (hours and minutes identical)
   s_wordmark_layer = text_layer_create(GRect(8, 3, 60, 22));
@@ -555,6 +606,7 @@ static void window_load(Window *window) {
 static void window_unload(Window *window) {
   tick_timer_service_unsubscribe();
   layer_destroy(s_chrome_layer);
+  layer_destroy(s_tiles_layer);
   text_layer_destroy(s_wordmark_layer);
   text_layer_destroy(s_clock_layer);
   text_layer_destroy(s_counter_layer);
