@@ -439,6 +439,7 @@ static void main_window_load(Window *window) {
   // battery icon + percent (top-right), with breathing room between the two
   s_batt_icon_layer = bitmap_layer_create(GRect(126, 0, 32, 32));
   bitmap_layer_set_compositing_mode(s_batt_icon_layer, GCompOpSet);
+  bitmap_layer_set_alignment(s_batt_icon_layer, GAlignCenter);
   layer_add_child(root, bitmap_layer_get_layer(s_batt_icon_layer));
   for (int t = 0; t < 2; t++) {
     for (int i = 0; i < 5; i++) {
@@ -454,6 +455,7 @@ static void main_window_load(Window *window) {
   s_icon_hr = bitmap_layer_create(GRect(44, 98, 32, 32));
   bitmap_layer_set_bitmap(s_icon_hr, s_img_hr);
   bitmap_layer_set_compositing_mode(s_icon_hr, GCompOpSet);
+  bitmap_layer_set_alignment(s_icon_hr, GAlignCenter);
   layer_add_child(root, bitmap_layer_get_layer(s_icon_hr));
   s_hr_layer = text_layer_new(GRect(78, 98, 48, 30), FONT_KEY_GOTHIC_24_BOLD, s_col_fg, GTextAlignmentCenter);
   layer_add_child(root, text_layer_get_layer(s_hr_layer));
@@ -484,6 +486,7 @@ static void main_window_load(Window *window) {
     s_icon_stat[i] = bitmap_layer_create(GRect(icon_frames[i].origin.x, icon_frames[i].origin.y,
                                                icon_frames[i].size.w, icon_frames[i].size.h));
     bitmap_layer_set_compositing_mode(s_icon_stat[i], GCompOpSet);
+    bitmap_layer_set_alignment(s_icon_stat[i], GAlignCenter);
     layer_add_child(s_panel_layer, bitmap_layer_get_layer(s_icon_stat[i]));
 
     s_stat_num[i] = text_layer_new(GRect(num_x[i], 34, num_w[i], 24),

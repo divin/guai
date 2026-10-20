@@ -1,5 +1,7 @@
 """Weather service tests (Step 2 gate): mapping, poll store, skip-without-location."""
 
+from datetime import UTC
+
 import httpx
 
 from guai_hub.database import Database
@@ -116,15 +118,31 @@ def test_weather_current_no_data(client):
 
 
 def test_weather_current_with_today_rows(client):
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     iso = lambda dt: dt.isoformat(timespec="seconds").replace("+00:00", "Z")
-    _seed_weather(client, [
-        {"event_time": iso(now), "temperature_c": 12.5, "condition": "cloudy", "weather_code": 3},
-        {"event_time": iso(now - timedelta(minutes=30)), "temperature_c": 15.0, "condition": "cloudy"},
-        {"event_time": iso(now - timedelta(minutes=60)), "temperature_c": 8.0, "condition": "cloudy"},
-    ])
+    _seed_weather(
+        client,
+        [
+            {
+                "event_time": iso(now),
+                "temperature_c": 12.5,
+                "condition": "cloudy",
+                "weather_code": 3,
+            },
+            {
+                "event_time": iso(now - timedelta(minutes=30)),
+                "temperature_c": 15.0,
+                "condition": "cloudy",
+            },
+            {
+                "event_time": iso(now - timedelta(minutes=60)),
+                "temperature_c": 8.0,
+                "condition": "cloudy",
+            },
+        ],
+    )
     body = client.get("/api/weather/current", headers=_auth()).json()["weather"]
     assert body["temp_c"] == 12.5
     assert body["condition"] == "cloudy"
@@ -134,13 +152,20 @@ def test_weather_current_with_today_rows(client):
 
 
 def test_weather_current_yesterday_only_high_low_null(client):
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
-    yesterday = datetime.now(timezone.utc) - timedelta(days=1)
-    _seed_weather(client, [
-        {"event_time": yesterday.isoformat(timespec="seconds").replace("+00:00", "Z"),
-         "temperature_c": 5.0, "condition": "clear", "weather_code": 0},
-    ])
+    yesterday = datetime.now(UTC) - timedelta(days=1)
+    _seed_weather(
+        client,
+        [
+            {
+                "event_time": yesterday.isoformat(timespec="seconds").replace("+00:00", "Z"),
+                "temperature_c": 5.0,
+                "condition": "clear",
+                "weather_code": 0,
+            },
+        ],
+    )
     body = client.get("/api/weather/current", headers=_auth()).json()["weather"]
     assert body["temp_c"] == 5.0
     assert body["temp_high_c"] is None

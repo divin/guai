@@ -1,6 +1,6 @@
 [project]
 name = "guai-hub"
-version = "1.1.0"
+version = "1.2.0"
 description = "GUAI self-hosted health platform — server (Gather & Understand)"
 readme = "README.md"
 authors = [

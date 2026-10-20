@@ -22,6 +22,14 @@ flowchart LR
 
 The **watchface** reads Pebble's Health API each minute, sends snapshots to its JS layer, and uploads them (`POST /api/sync`, bearer token) with offline buffering and idempotent upserts. The **server** runs a one-minute tick in your timezone that materialises due check-in instances, marks missed ones after their answer window, and fires a *generic* Pushover ping. The **check-in app** pulls pending questions one at a time — toggle, stepper, or option list — and submits the answer straight from the watch. The **dashboard** (Zola + vanilla JS, hand-rolled SVG charts) aggregates everything per local day, computes statistics, and plots correlations.
 
+The watchface's bottom panel is fully user-configurable — each of the three slots can show **steps**, **sleep**, **active minutes**, or **live weather** (server data only, `--` when unavailable) — with a light/dark theme and an adjustable daily step goal, all from the settings gear:
+
+<p align="center">
+  <img src="assets/watchface-dark.png" width="200" alt="GUAI watchface, dark theme (default)">
+  &nbsp;&nbsp;&nbsp;&nbsp;
+  <img src="assets/watchface-light.png" width="200" alt="GUAI watchface, light theme">
+</p>
+
 ## 🚀 Quick start
 
 1. Copy `example.env` to `.env` and set `GUAI_SYNC_TOKEN` (any random string ≥ 16 chars — it's the shared secret for the watch). `TZ` must be a valid IANA timezone; it drives every daily boundary, schedule, and missed-checkin rule. Pushover is optional (`PUSHOVER_TOKEN` + `PUSHOVER_USER`).

@@ -125,13 +125,17 @@ async def current(settings: Settings, db: Database) -> dict | None:
         today = now.astimezone(tz).date()
         day_start = datetime.combine(today, dtime.min, tzinfo=tz).astimezone(UTC)
         rows = (
-            await session.execute(
-                select(Weather).where(
-                    Weather.event_time >= _iso(day_start),
-                    Weather.event_time < _iso(day_start + timedelta(days=1)),
+            (
+                await session.execute(
+                    select(Weather).where(
+                        Weather.event_time >= _iso(day_start),
+                        Weather.event_time < _iso(day_start + timedelta(days=1)),
+                    )
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
 
     temps = [r.temperature_c for r in rows if r.temperature_c is not None]
     return {
