@@ -1,0 +1,17 @@
+# Build context exclusions for the Docker image.
+.git
+**/.venv
+**/__pycache__
+**/.ruff_cache
+**/.pytest_cache
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
+server/.env
+server/data
+server/.local-data
+frontend/public
+watchface/build
+app/build
+docs
+spec

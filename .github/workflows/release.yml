@@ -1,0 +1,87 @@
+# Release pipeline: version tag → all checks, Pebble .pbw builds, GHCR image,
+# and a GitHub release with the compiled watchface + check-in app attached.
+# Version tags are plain semantic versions (e.g. 1.0.0) that must equal
+# server/pyproject.toml's version (spec/operations.md).
+
+name: release
+
+on:
+  push:
+    tags: ["*"]
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  checks:
+    uses: ./.github/workflows/ci.yml
+
+  pebble-build:
+    name: pebble (watchface + check-in app)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Install Pebble toolchain
+        run: |
+          uv tool install pebble-tool
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          pebble sdk install latest || true  # exits 1 when already installed
+      - name: Build watchface
+        working-directory: watchface
+        run: pebble build
+      - name: Build check-in app
+        working-directory: app
+        run: pebble build
+      - name: Upload .pbw artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: pbw
+          path: |
+            watchface/build/watchface.pbw
+            app/build/app.pbw
+
+  publish:
+    name: publish (GHCR + release)
+    needs: [checks, pebble-build]
+    runs-on: ubuntu-latest
+    env:
+      IMAGE: ghcr.io/${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify tag matches package version
+        run: |
+          VERSION=$(python3 -c "import tomllib; print(tomllib.load(open('server/pyproject.toml','rb'))['project']['version'])")
+          if [ "$VERSION" != "${{ github.ref_name }}" ]; then
+            echo "tag ${{ github.ref_name }} != package version $VERSION"; exit 1
+          fi
+      - name: Download .pbw artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: pbw
+          path: pbw
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:${{ github.ref_name }}
+            ${{ env.IMAGE }}:${{ github.sha }}
+      - name: Create GitHub release with .pbw assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            pbw/watchface/build/watchface.pbw \
+            pbw/app/build/app.pbw \
+            --generate-notes

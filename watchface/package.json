@@ -1,0 +1,37 @@
+{
+  "name": "guai",
+  "author": "Divin Gavran",
+  "version": "1.0.0",
+  "keywords": ["pebble-app"],
+  "private": true,
+  "dependencies": {},
+  "pebble": {
+    "displayName": "GUAI",
+    "uuid": "d2637251-644a-4bdb-88fa-41df52f2a444",
+    "sdkVersion": "3",
+    "enableMultiJS": true,
+    "targetPlatforms": [
+      "emery"
+    ],
+    "watchapp": {
+      "watchface": true
+    },
+    "messageKeys": [
+      "REQUEST",
+      "TYPE",
+      "TIMESTAMP",
+      "STEPS",
+      "DISTANCE_METERS",
+      "RESTING_KCAL",
+      "ACTIVE_KCAL",
+      "ACTIVE_SECONDS",
+      "HR_BPM",
+      "HR_RAW_BPM",
+      "SLEEP_SECONDS",
+      "SLEEP_RESTFUL_SECONDS"
+    ],
+    "resources": {
+      "media": []
+    }
+  }
+}

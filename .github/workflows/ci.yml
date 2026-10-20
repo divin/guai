@@ -1,0 +1,51 @@
+# GUAI CI — backend + frontend checks on push/PR; release job on version tags.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+
+env:
+  ZOLA_VERSION: 0.23.6
+
+jobs:
+  backend:
+    name: backend (ruff + pytest)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: uv sync
+      - name: Lint (format check)
+        run: uv run ruff format --check .
+      - name: Lint (ruff check)
+        run: uv run ruff check .
+      - name: Test
+        run: uv run pytest tests -q
+
+  frontend:
+    name: frontend (Zola + node test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Zola
+        run: |
+          curl -sL "https://github.com/getzola/zola/releases/download/v${ZOLA_VERSION}/zola-v${ZOLA_VERSION}-x86_64-unknown-linux-gnu.tar.gz" \
+            | tar xz
+          sudo mv zola /usr/local/bin/
+      - name: Zola check
+        run: zola --root frontend check --skip-external-links
+      - name: Zola build
+        run: zola --root frontend build
+      - name: Node tests
+        working-directory: frontend
+        run: node --test

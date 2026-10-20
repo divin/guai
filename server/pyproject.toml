@@ -1,0 +1,50 @@
+[project]
+name = "guai-hub"
+version = "1.0.0"
+description = "GUAI self-hosted health platform — server (Gather & Understand)"
+readme = "README.md"
+authors = [
+    { name = "divin", email = "71128266+divin@users.noreply.github.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "aiosqlite>=0.22.1",
+    "alembic>=1.16.0",
+    "fastapi>=0.141.1",
+    "greenlet>=3.0.0",
+    "httpx>=0.28.1",
+    "pydantic-settings>=2.10.0",
+    "sqlmodel>=0.0.42",
+    "uvicorn[standard]>=0.53.0",
+]
+
+[project.scripts]
+server = "guai_hub.__main__:main"
+guai-hub = "guai_hub.__main__:main"
+
+[build-system]
+requires = ["uv_build>=0.12.10,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.25.0",
+    "ruff>=0.16.8",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+# Wall-clock (naive-local) times are deliberate: schedules are defined in TZ and
+# localised only at the boundary, so DTZ007 does not apply to this codebase.
+ignore = ["DTZ007"]
+
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Query"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

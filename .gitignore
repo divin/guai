@@ -1,0 +1,17 @@
+build/
+.lock-waf_darwin_build
+.ruff_cache/
+__pycache__/
+.pytest_cache/
+.DS_Store
+.venv/
+data/
+.local-data/
+frontend/public/
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
+.env
+PLAN.md
+spec/
+docs/

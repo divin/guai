@@ -1,0 +1,24 @@
+# GUAI server — example Compose file for self-hosting.
+# Pulls the prebuilt image from GHCR by default (published on every version tag).
+# Local builds: docker build -t guai:local .  then  GUAI_IMAGE=guai:local docker compose up -d
+#
+# Copy example.env to .env and set GUAI_SYNC_TOKEN (>= 16 chars).
+# Linux bind mounts: make ./data writable by the container's non-root user (uid 10001):
+#   mkdir -p data && chown 10001:10001 data   (or: chmod 777 data)
+# Recommended: bind to a trusted LAN only.
+
+services:
+  guai:
+    image: ghcr.io/divin/guai:latest
+    container_name: guai
+    ports:
+      - "8080:8000"
+    environment:
+      TZ: ${TZ:-Europe/Berlin}
+      GUAI_SYNC_TOKEN: ${GUAI_SYNC_TOKEN:?GUAI_SYNC_TOKEN is required (see example.env)}
+      GUAI_WEATHER_INTERVAL_MINUTES: ${GUAI_WEATHER_INTERVAL_MINUTES:-60}
+      PUSHOVER_TOKEN: ${PUSHOVER_TOKEN:-}
+      PUSHOVER_USER: ${PUSHOVER_USER:-}
+    volumes:
+      - ./data:/data
+    restart: unless-stopped

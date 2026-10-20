@@ -1,0 +1,37 @@
+{
+  "name": "guai-checkin",
+  "author": "Divin Gavran",
+  "version": "1.0.0",
+  "keywords": ["pebble-app", "checkin"],
+  "private": true,
+  "dependencies": {},
+  "pebble": {
+    "displayName": "GUAI Check-In",
+    "uuid": "70f54c97-07c2-404e-b093-37dd80c5f4cd",
+    "sdkVersion": "3",
+    "enableMultiJS": true,
+    "targetPlatforms": [
+      "emery"
+    ],
+    "watchapp": {
+      "watchface": false
+    },
+    "messageKeys": [
+      "REQUEST",
+      "TYPE",
+      "INSTANCE_ID",
+      "QUESTION",
+      "ANSWER_TYPE",
+      "ANSWER_OPTIONS",
+      "SCALE_MIN",
+      "SCALE_MAX",
+      "ANSWER_VALUE",
+      "ANSWER_CHOICE",
+      "STATUS_TEXT",
+      "DUE_BY"
+    ],
+    "resources": {
+      "media": []
+    }
+  }
+}
