@@ -15,6 +15,7 @@ var QUEUE_KEY = "GUAI_QUEUE";
 var NEXT_POLL_KEY = "GUAI_NEXT_POLL";
 var SLOTS_KEY = "GUAI_SLOTS";
 var THEME_KEY = "GUAI_THEME";
+var GOAL_KEY = "GUAI_GOAL";
 
 var DEVICE_NAME = "pebble";
 
@@ -197,6 +198,24 @@ function sendTheme(theme) {
   });
 }
 
+function readGoal() {
+  var g = parseInt(localStorage.getItem(GOAL_KEY) || "10000", 10);
+  return clampGoal(g);
+}
+
+function clampGoal(g) {
+  if (isNaN(g)) return 10000;
+  if (g < 1000) return 1000;
+  if (g > 100000) return 100000;
+  return g;
+}
+
+function sendGoal(goal) {
+  Pebble.sendAppMessage({ STEP_GOAL: goal }, function () {}, function () {
+    console.log("pkjs: goal send failed");
+  });
+}
+
 // --- Weather for the watchface row (server data only) -----------------------
 
 var WX_CODES = {
@@ -239,6 +258,7 @@ Pebble.addEventListener("ready", function () {
   console.log("pkjs: ready, server=" + localStorage.getItem(SERVER_KEY) + " tokenSet=" + !!localStorage.getItem(TOKEN_KEY));
   sendTheme(readTheme());
   sendSlots(readSlots());
+  sendGoal(readGoal());
   upload();
   requestSleepOnce();
   pollWeather();
@@ -292,7 +312,8 @@ function configHtml(name) {
       '<label>Theme<br><select id="theme">' +
       '<option value="0"' + (readTheme() === 0 ? ' selected' : '') + '>Dark</option>' +
       '<option value="1"' + (readTheme() === 1 ? ' selected' : '') + '>Light</option>' +
-      '</select></label><br><br>' +
+      '</select></label><br>' +
+      '<label>Step goal (steps/day)<br><input id="goal" type="number" min="1000" max="100000" step="500" value="' + readGoal() + '"></label><br><br>' +
       '<button type="submit">Save</button></form>' +
       '<script>document.getElementById("f").onsubmit=function(){' +
       'var send=function(){var opts={srv:document.getElementById("srv").value,' +
@@ -300,7 +321,8 @@ function configHtml(name) {
       'slots:[parseInt(document.getElementById("slot0").value,10),' +
       'parseInt(document.getElementById("slot1").value,10),' +
       'parseInt(document.getElementById("slot2").value,10)],' +
-      'theme:parseInt(document.getElementById("theme").value,10)};location.href=' +
+      'theme:parseInt(document.getElementById("theme").value,10),' +
+      'goal:parseInt(document.getElementById("goal").value,10)};location.href=' +
       '"pebblejs://close#"+encodeURIComponent(JSON.stringify(opts))};' +
       'setTimeout(send,100);return false;};<\/script></body></html>'
     );
@@ -327,6 +349,11 @@ Pebble.addEventListener("webviewclosed", function (e) {
       var theme = (parseInt(opts.theme, 10) === 1) ? 1 : 0;
       localStorage.setItem(THEME_KEY, String(theme));
       sendTheme(theme);
+    }
+    if (opts.goal !== undefined) {
+      var goal = clampGoal(parseInt(opts.goal, 10));
+      localStorage.setItem(GOAL_KEY, String(goal));
+      sendGoal(goal);
     }
     upload();
     pollWeather();

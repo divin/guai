@@ -29,7 +29,9 @@ static bool s_wx_valid = false;
 static int s_wx_cond = 0;
 static int s_wx_temp_x10 = 0;
 
-#define STEP_GOAL 10000
+#define STEP_GOAL_DEFAULT 10000
+#define STEP_GOAL_MIN 1000
+#define STEP_GOAL_MAX 100000
 
 // Theme state and palette: 0 = dark (default), 1 = light.
 static int s_theme = 0;
@@ -68,6 +70,7 @@ static const int WX_RESOURCE_IDS[2][8] = {
 static int s_steps = 0;
 static int s_sleep_min = 0;
 static int s_active_min = 0;
+static int s_step_goal = STEP_GOAL_DEFAULT;  // user-adjustable via settings
 
 static void apply_theme(int theme);
 
@@ -154,7 +157,7 @@ static void bar_layer_update_proc(Layer *layer, GContext *ctx) {
   graphics_context_set_fill_color(ctx, s_col_track);
   graphics_fill_rect(ctx, bounds, 0, GCornerNone);
   graphics_context_set_fill_color(ctx, s_col_accent);
-  int w = bounds.size.w * (s_steps > STEP_GOAL ? STEP_GOAL : s_steps) / STEP_GOAL;
+  int w = bounds.size.w * (s_steps > s_step_goal ? s_step_goal : s_steps) / s_step_goal;
   if (w > 0) graphics_fill_rect(ctx, GRect(0, 0, w, bounds.size.h), 0, GCornerNone);
 }
 
@@ -340,6 +343,14 @@ static void inbox_received(DictionaryIterator *iter, void *context) {
       s_slots[i] = (v >= 0 && v <= 3) ? v : 0;
       slots_changed = true;
     }
+  }
+
+  // daily step goal from the settings page (drives the progress bar)
+  Tuple *goal = dict_find(iter, MESSAGE_KEY_STEP_GOAL);
+  if (goal) {
+    int g = (int)goal->value->int32;
+    s_step_goal = (g < STEP_GOAL_MIN) ? STEP_GOAL_MIN : (g > STEP_GOAL_MAX) ? STEP_GOAL_MAX : g;
+    layer_mark_dirty(s_bar_layer);
   }
 
   if (wcond || theme || slots_changed) {

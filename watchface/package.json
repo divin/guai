@@ -37,7 +37,8 @@
       "PANEL_SLOT_A",
       "PANEL_SLOT_B",
       "PANEL_SLOT_C",
-      "UI_THEME"
+      "UI_THEME",
+      "STEP_GOAL"
     ],
     "resources": {
       "media": [
