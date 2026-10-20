@@ -111,6 +111,17 @@ function upload() {
 
 // --- C -> JS message handling -------------------------------------------
 
+function enqueueHeartRate(ts, bpm) {
+  if (typeof bpm !== "number" || bpm < 20 || bpm > 250) return;
+  enqueue({
+    type: "heart_rate",
+    dedupeKey: ts,
+    body: {
+      heart_rates: [{ at: utcIso(ts), bpm: bpm }]
+    }
+  });
+}
+
 Pebble.addEventListener("appmessage", function (e) {
   var p = e.payload;
   var ts = p.TIMESTAMP;
@@ -133,14 +144,10 @@ Pebble.addEventListener("appmessage", function (e) {
         }
       }
     });
-  } else if (p.TYPE === "heart_rate" && bpm) {
-    enqueue({
-      type: "heart_rate",
-      dedupeKey: ts,
-      body: {
-        heart_rates: [{ at: utcIso(ts), bpm: bpm }]
-      }
-    });
+    // The native watch includes the current HR in its activity snapshot.
+    enqueueHeartRate(ts, bpm);
+  } else if (p.TYPE === "heart_rate") {
+    enqueueHeartRate(ts, bpm);
   } else if (p.TYPE === "sleep") {
     enqueue({
       type: "sleep",
