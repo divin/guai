@@ -15,11 +15,9 @@ The watchface background is black, so recoloring keys on luminance — this is t
 Nice consequence: the battery icons read correctly — ``batt_empty``'s black interior
 becomes transparent (looks empty), ``batt_full``'s white interior stays filled.
 
-Icons ship at **1.5x nearest-neighbor upscale (24x24)**: the luminance fix made the glyphs
-readable at native size, and 24x24 splits the difference between too small (16x16) and too
-dominant (32x32) on the 200x228 emery display. Note: non-integer nearest-neighbor scaling
-gives slightly uneven pixel widths (some source pixels double, some stay single) — subtle at
-real watch size, visible when magnified.
+Icons ship at **2x nearest-neighbor upscale (32x32)**: integer scaling is pixel-perfect
+(every source pixel becomes an exact 2x2 block), and the glyphs match the 32x32 watchface
+layer frames. The luminance recolor keeps them readable at native 16x16 too.
 
 Each icon is emitted **twice**: a dark-theme set (``<name>.png``) and a light-theme set
 (``<name>_light.png``) with high-contrast colors tuned for a light background (near-black
@@ -47,7 +45,7 @@ WHITE = (235, 235, 235)
 TEAL_LIGHT = (13, 106, 88)
 RED_LIGHT = (176, 30, 36)
 DARK_GREY = (28, 28, 30)
-SCALE = 1.5  # 16x16 pack -> 24x24 resources
+SCALE = 2.0  # 16x16 pack -> 32x32 resources (integer NN scaling, crisp)
 
 # source pack filename -> (resource base name, dark color, light color, rotate 90° clockwise)
 MANIFEST: dict[str, tuple[str, tuple[int, int, int], tuple[int, int, int], bool]] = {

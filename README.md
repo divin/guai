@@ -6,7 +6,7 @@ AI tools were used during development.
 
 ## 🙋 Why GUAI?
 
-Health data is deeply personal, yet most trackers either live in someone else's cloud or bury self-reports in spreadsheets. I started GUAI for two reasons: I wanted my headache and mood logs in one place with the sensor data they might correlate with — on hardware I control; and I wanted to see how far agentic coding could take a full-stack project, from a C watchface to a spec-driven Python backend.
+Health data is deeply personal, yet most trackers either live in someone else's cloud or bury self-reports in spreadsheets. I started GUAI for two reasons: I wanted my headache and mood logs in one place with the sensor data they might correlate with — on hardware I control; and I wanted to see how far agentic coding could take a full-stack project, from a C watchface to a Python backend.
 
 ## 🧭 How it works
 
@@ -20,7 +20,7 @@ flowchart LR
     C --> D[Web dashboard]
 ```
 
-The **watchface** reads Pebble's Health API each minute, sends snapshots to its JS layer, and uploads them (`POST /api/sync`, bearer token) with offline buffering and idempotent upserts. The **server** runs a one-minute tick in your timezone that materialises due check-in instances, marks missed ones after their answer window, and fires a *generic* Pushover ping. The **check-in app** pulls pending questions one at a time — toggle, stepper, or option list — and submits the answer straight from the watch. The **dashboard** (Zola + vanilla JS, hand-rolled SVG charts) aggregates everything per local day, computes statistics, and plots correlations. See [`spec/`](spec/README.md) for the full contract.
+The **watchface** reads Pebble's Health API each minute, sends snapshots to its JS layer, and uploads them (`POST /api/sync`, bearer token) with offline buffering and idempotent upserts. The **server** runs a one-minute tick in your timezone that materialises due check-in instances, marks missed ones after their answer window, and fires a *generic* Pushover ping. The **check-in app** pulls pending questions one at a time — toggle, stepper, or option list — and submits the answer straight from the watch. The **dashboard** (Zola + vanilla JS, hand-rolled SVG charts) aggregates everything per local day, computes statistics, and plots correlations.
 
 ## 🚀 Quick start
 
@@ -88,7 +88,7 @@ just app-emulate    # Check-In app in the Pebble Time 2 (emery) emulator
 just watch-smoke    # Emulator-free server-side sync test
 ```
 
-`just run` stores its database in the ignored `server/.local-data/` directory. The development flow is spec- and test-driven: the contracts in [`spec/`](spec/README.md) define expected behaviour, milestone exit gates in [`spec/roadmap.md`](spec/roadmap.md) mark what's implemented (0.1.0–0.9.0 are complete), and `PLAN.md` yields to the specs on conflict.
+`just run` stores its database in the ignored `server/.local-data/` directory.
 
 ## 📜 Naming
 
