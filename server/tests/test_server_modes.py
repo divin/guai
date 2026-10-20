@@ -174,6 +174,8 @@ def _mode_env(monkeypatch, tmp_path, mode, scheduler="0"):
 
 def test_device_mode_never_migrates_or_schedules(monkeypatch, tmp_path):
     calls = _watch_lifespan(monkeypatch)
+    monkeypatch.setenv("TZ", "UTC")
+    monkeypatch.setenv("GUAI_SYNC_TOKEN", TOKEN)
     monkeypatch.setenv("GUAI_DB_PATH", str(tmp_path / "guai.sqlite3"))
     monkeypatch.setenv("GUAI_SCHEDULER", "1")  # even misconfigured: no scheduler
     monkeypatch.setenv("GUAI_SERVER_MODE", "device")
@@ -187,6 +189,8 @@ def test_device_mode_never_migrates_or_schedules(monkeypatch, tmp_path):
 
 def test_primary_mode_migrates_and_schedules(monkeypatch, tmp_path):
     calls = _watch_lifespan(monkeypatch)
+    monkeypatch.setenv("TZ", "UTC")
+    monkeypatch.setenv("GUAI_SYNC_TOKEN", TOKEN)
     monkeypatch.setenv("GUAI_DB_PATH", str(tmp_path / "guai.sqlite3"))
     monkeypatch.setenv("GUAI_SCHEDULER", "1")
     monkeypatch.setenv("GUAI_SERVER_MODE", "internal")
