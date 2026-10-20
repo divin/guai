@@ -30,8 +30,8 @@ services:
       GUAI_WEATHER_INTERVAL_MINUTES: ${GUAI_WEATHER_INTERVAL_MINUTES:-60}
       PUSHOVER_TOKEN: ${PUSHOVER_TOKEN:-}
       PUSHOVER_USER: ${PUSHOVER_USER:-}
-      # full mode (default): internal + device surfaces, scheduler, migrations
-      GUAI_SERVER_MODE: full
+      # internal mode: dashboard + management APIs, scheduler, migrations; no device API
+      GUAI_SERVER_MODE: internal
     volumes:
       - ${HOST_DATA_DIR:-./data}:/data
     restart: unless-stopped
