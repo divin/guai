@@ -13,6 +13,8 @@ var SERVER_KEY = "GUAI_SERVER";
 var TOKEN_KEY = "GUAI_TOKEN";
 var QUEUE_KEY = "GUAI_QUEUE";
 var NEXT_POLL_KEY = "GUAI_NEXT_POLL";
+var SLOTS_KEY = "GUAI_SLOTS";
+var THEME_KEY = "GUAI_THEME";
 
 var DEVICE_NAME = "pebble";
 
@@ -60,17 +62,30 @@ function dropHead() {
   localStorage.setItem(QUEUE_KEY, JSON.stringify(q));
 }
 
-// pypkjs provides XMLHttpRequest, not fetch — keep HTTP here so it also runs on real devices.
+// Shared XHR with a JS-side timeout guard: pypkjs does not reliably fire
+// onerror/ontimeout when the server is unreachable (connection refused hangs), so a
+// pure-JS timer guarantees the callback runs exactly once.
+function httpX(method, url, token, body, done, timeoutMs) {
+  var finished = false;
+  var timer = setTimeout(function () { complete(0, ""); }, timeoutMs || 15000);
+  function complete(status, text) {
+    if (finished) return;
+    finished = true;
+    clearTimeout(timer);
+    done(status, text);
+  }
+  var x = new XMLHttpRequest();
+  x.open(method, url, true);
+  x.setRequestHeader("Content-Type", "application/json");
+  if (token) x.setRequestHeader("Authorization", "Bearer " + token);
+  x.onload = function () { complete(x.status, x.responseText); };
+  x.onerror = function () { complete(0, ""); };
+  x.ontimeout = function () { complete(0, ""); };
+  x.send(body ? JSON.stringify(body) : null);
+}
+
 function httpPost(url, token, body, done) {
-  var xhr = new XMLHttpRequest();
-  xhr.open("POST", url, true);
-  xhr.setRequestHeader("Content-Type", "application/json");
-  xhr.setRequestHeader("Authorization", "Bearer " + token);
-  xhr.timeout = 15000;
-  xhr.onload = function () { done(xhr.status); };
-  xhr.onerror = function () { done(0); };
-  xhr.ontimeout = function () { done(0); };
-  xhr.send(JSON.stringify(body));
+  httpX("POST", url, token, body, function (status) { done(status); }, 15000);
 }
 
 function upload() {
@@ -150,12 +165,86 @@ function requestSleepOnce() {
   Pebble.sendAppMessage({ REQUEST: "sleep_request" }, function () {}, function () {});
 }
 
+// --- Bottom panel slot assignment (steps / sleep / active / weather) --------
+
+function readSlots() {
+  try {
+    var s = JSON.parse(localStorage.getItem(SLOTS_KEY) || "[0,1,2]");
+    if (!Array.isArray(s) || s.length !== 3) return [0, 1, 2];
+    return s.map(function (v) {
+      v = parseInt(v, 10);
+      return (v >= 0 && v <= 3) ? v : 0;
+    });
+  } catch (e) {
+    return [0, 1, 2];
+  }
+}
+
+function sendSlots(slots) {
+  Pebble.sendAppMessage({
+    PANEL_SLOT_A: slots[0], PANEL_SLOT_B: slots[1], PANEL_SLOT_C: slots[2]
+  }, function () {}, function () { console.log("pkjs: slots send failed"); });
+}
+
+function readTheme() {
+  var t = parseInt(localStorage.getItem(THEME_KEY) || "0", 10);
+  return (t === 1) ? 1 : 0;
+}
+
+function sendTheme(theme) {
+  Pebble.sendAppMessage({ UI_THEME: theme }, function () {}, function () {
+    console.log("pkjs: theme send failed");
+  });
+}
+
+// --- Weather for the watchface row (server data only) -----------------------
+
+var WX_CODES = {
+  "clear": 0, "partly_cloudy": 1, "cloudy": 2, "drizzle": 3,
+  "rain": 4, "snow": 5, "thunderstorm": 6, "fog": 7
+};
+var WX_MISSING = -9999; // sentinel: high/low not available today
+
+function sendWxUnavailable() {
+  console.log("pkjs: weather unavailable");
+  Pebble.sendAppMessage({ WEATHER_COND: 8 }, function () {}, function () {
+    console.log("pkjs: weather send failed");
+  });
+}
+
+function pollWeather() {
+  if (!settingsReady()) { sendWxUnavailable(); return; }
+  var server = localStorage.getItem(SERVER_KEY).replace(/\/$/, "");
+  var token = localStorage.getItem(TOKEN_KEY);
+  httpX("GET", server + "/api/weather/current", token, null, function (status, text) {
+    if (status !== 200) { sendWxUnavailable(); return; }
+    var body;
+    try { body = JSON.parse(text); } catch (e) { sendWxUnavailable(); return; }
+    var w = body.weather;
+    if (!w || typeof w.temp_c !== "number" || !w.condition) { sendWxUnavailable(); return; }
+    var payload = {
+      WEATHER_TEMP_C: Math.round(w.temp_c * 10),
+      WEATHER_COND: (WX_CODES[w.condition] !== undefined) ? WX_CODES[w.condition] : 8,
+      WEATHER_TEMP_HIGH_C: (typeof w.temp_high_c === "number") ? Math.round(w.temp_high_c * 10) : WX_MISSING,
+      WEATHER_TEMP_LOW_C: (typeof w.temp_low_c === "number") ? Math.round(w.temp_low_c * 10) : WX_MISSING
+    };
+    console.log("pkjs: weather temp=" + w.temp_c + " cond=" + w.condition);
+    Pebble.sendAppMessage(payload, function () {}, function () {
+      console.log("pkjs: weather send failed");
+    });
+  }, 10000);
+}
+
 Pebble.addEventListener("ready", function () {
   console.log("pkjs: ready, server=" + localStorage.getItem(SERVER_KEY) + " tokenSet=" + !!localStorage.getItem(TOKEN_KEY));
+  sendTheme(readTheme());
+  sendSlots(readSlots());
   upload();
   requestSleepOnce();
+  pollWeather();
   // Periodic flush while the watchface is open.
   setInterval(upload, 60000);
+  setInterval(pollWeather, 1800000); // weather changes slowly; 30 min
 });
 
 // --- Configuration page -------------------------------------------------
@@ -171,6 +260,14 @@ function htmlEscape(s) {
 function configHtml(name) {
   var srv = htmlEscape(localStorage.getItem(SERVER_KEY) || "");
   var tok = htmlEscape(localStorage.getItem(TOKEN_KEY) || "");
+  var slots = readSlots();
+  var names = ["Steps", "Sleep", "Active", "Weather"];
+  var slotSel = function (idx) {
+    return '<select id="slot' + idx + '">' +
+      names.map(function (n, i) {
+        return '<option value="' + i + '"' + (slots[idx] === i ? ' selected' : '') + '>' + n + '</option>';
+      }).join("") + '</select>';
+  };
   return "data:text/html;charset=utf-8," +
     encodeURIComponent(
       '<!DOCTYPE html><html><head><meta charset="utf-8">' +
@@ -181,7 +278,7 @@ function configHtml(name) {
       '<style>' +
       'html{color-scheme:light}' +
       'body{background:#ffffff;color:#111111;font-family:sans-serif;padding:16px;max-width:480px;margin:0 auto}' +
-      'input{width:100%;box-sizing:border-box;padding:8px;font-size:16px;background:#ffffff;color:#111111;border:1px solid #999;border-radius:6px}' +
+      'input,select{width:100%;box-sizing:border-box;padding:8px;font-size:16px;background:#ffffff;color:#111111;border:1px solid #999;border-radius:6px}' +
       'button{margin-top:12px;padding:8px 16px;font-size:16px;background:#111111;color:#ffffff;border:0;border-radius:6px}' +
       '</style></head>' +
       '<body>' +
@@ -189,10 +286,21 @@ function configHtml(name) {
       '<form id="f">' +
       '<label>Server URL<br><input id="srv" value="' + srv + '"></label><br><br>' +
       '<label>Token<br><input id="tok" value="' + tok + '"></label><br><br>' +
+      '<label>Panel slot 1<br>' + slotSel(0) + '</label><br>' +
+      '<label>Panel slot 2<br>' + slotSel(1) + '</label><br>' +
+      '<label>Panel slot 3<br>' + slotSel(2) + '</label><br>' +
+      '<label>Theme<br><select id="theme">' +
+      '<option value="0"' + (readTheme() === 0 ? ' selected' : '') + '>Dark</option>' +
+      '<option value="1"' + (readTheme() === 1 ? ' selected' : '') + '>Light</option>' +
+      '</select></label><br><br>' +
       '<button type="submit">Save</button></form>' +
       '<script>document.getElementById("f").onsubmit=function(){' +
       'var send=function(){var opts={srv:document.getElementById("srv").value,' +
-      'tok:document.getElementById("tok").value};location.href=' +
+      'tok:document.getElementById("tok").value,' +
+      'slots:[parseInt(document.getElementById("slot0").value,10),' +
+      'parseInt(document.getElementById("slot1").value,10),' +
+      'parseInt(document.getElementById("slot2").value,10)],' +
+      'theme:parseInt(document.getElementById("theme").value,10)};location.href=' +
       '"pebblejs://close#"+encodeURIComponent(JSON.stringify(opts))};' +
       'setTimeout(send,100);return false;};<\/script></body></html>'
     );
@@ -207,6 +315,20 @@ Pebble.addEventListener("webviewclosed", function (e) {
     var opts = JSON.parse(decodeURIComponent(e.response));
     if (opts.srv) localStorage.setItem(SERVER_KEY, opts.srv.trim());
     if (opts.tok) localStorage.setItem(TOKEN_KEY, opts.tok.trim());
+    if (opts.slots) {
+      var slots = opts.slots.map(function (v) {
+        v = parseInt(v, 10);
+        return (v >= 0 && v <= 3) ? v : 0;
+      });
+      localStorage.setItem(SLOTS_KEY, JSON.stringify(slots));
+      sendSlots(slots);
+    }
+    if (opts.theme !== undefined) {
+      var theme = (parseInt(opts.theme, 10) === 1) ? 1 : 0;
+      localStorage.setItem(THEME_KEY, String(theme));
+      sendTheme(theme);
+    }
     upload();
+    pollWeather();
   }
 });

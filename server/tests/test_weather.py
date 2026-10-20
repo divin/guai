@@ -81,3 +81,68 @@ async def test_poll_propagates_provider_error(monkeypatch, migrated_db_path, set
             await weather.poll(settings, db)
     finally:
         await db.dispose()
+
+
+# --- GET /api/weather/current (device endpoint, Step 10.3) -------------------
+
+TOKEN = "0123456789abcdef"
+
+
+def _auth():
+    return {"Authorization": f"Bearer {TOKEN}"}
+
+
+def _seed_weather(client, rows):
+    import asyncio
+
+    from guai_hub.models import Weather
+
+    async def _run():
+        async with client.app.state.db.session_factory() as s:
+            for row in rows:
+                s.add(Weather(**row))
+            await s.commit()
+
+    asyncio.run(_run())
+
+
+def test_weather_current_requires_token(client):
+    assert client.get("/api/weather/current").status_code == 401
+
+
+def test_weather_current_no_data(client):
+    body = client.get("/api/weather/current", headers=_auth()).json()
+    assert body == {"weather": None}
+
+
+def test_weather_current_with_today_rows(client):
+    from datetime import datetime, timedelta, timezone
+
+    now = datetime.now(timezone.utc)
+    iso = lambda dt: dt.isoformat(timespec="seconds").replace("+00:00", "Z")
+    _seed_weather(client, [
+        {"event_time": iso(now), "temperature_c": 12.5, "condition": "cloudy", "weather_code": 3},
+        {"event_time": iso(now - timedelta(minutes=30)), "temperature_c": 15.0, "condition": "cloudy"},
+        {"event_time": iso(now - timedelta(minutes=60)), "temperature_c": 8.0, "condition": "cloudy"},
+    ])
+    body = client.get("/api/weather/current", headers=_auth()).json()["weather"]
+    assert body["temp_c"] == 12.5
+    assert body["condition"] == "cloudy"
+    assert body["temp_high_c"] == 15.0
+    assert body["temp_low_c"] == 8.0
+    assert body["age_minutes"] == 0
+
+
+def test_weather_current_yesterday_only_high_low_null(client):
+    from datetime import datetime, timedelta, timezone
+
+    yesterday = datetime.now(timezone.utc) - timedelta(days=1)
+    _seed_weather(client, [
+        {"event_time": yesterday.isoformat(timespec="seconds").replace("+00:00", "Z"),
+         "temperature_c": 5.0, "condition": "clear", "weather_code": 0},
+    ])
+    body = client.get("/api/weather/current", headers=_auth()).json()["weather"]
+    assert body["temp_c"] == 5.0
+    assert body["temp_high_c"] is None
+    assert body["temp_low_c"] is None
+    assert body["age_minutes"] >= 1435

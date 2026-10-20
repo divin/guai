@@ -93,3 +93,8 @@ just watch-smoke    # Emulator-free server-side sync test
 ## 📜 Naming
 
 GUAI is a playful nod to the Japanese word 具合 (*guai*), “condition” or “state”, most often used about health. It doubles as the platform's arc: **G**ather (the watch collects), **U**nderstand (the dashboard interprets), **A**nticipate (ML forecasting and anomaly detection — planned post-1.0, with the data model already designed for it), **I**nsights (the point of it all: your data, your knowledge).
+
+## 🙏 Credits
+
+- Pixel icons by [Nikoichu](https://nikoichu.itch.io/pixel-icons).
+- [Pebble watch](https://repebble.com/watch) and [PebbleOS](https://github.com/coredevices/pebbleos).

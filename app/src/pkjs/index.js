@@ -40,15 +40,25 @@ function sendStatus(text) {
 // --- HTTP (XHR) -------------------------------------------------------------
 
 function xhr(method, url, token, body, done) {
-  var xhr = new XMLHttpRequest();
-  xhr.open(method, url, true);
-  xhr.setRequestHeader("Content-Type", "application/json");
-  if (token) xhr.setRequestHeader("Authorization", "Bearer " + token);
-  xhr.timeout = 15000;
-  xhr.onload = function () { done(xhr.status, xhr.responseText); };
-  xhr.onerror = function () { done(0, ""); };
-  xhr.ontimeout = function () { done(0, ""); };
-  xhr.send(body ? JSON.stringify(body) : null);
+  // JS-side timeout guard: pypkjs does not reliably fire onerror/ontimeout when the
+  // server is unreachable, so a pure-JS timer guarantees done() runs exactly once.
+  var finished = false;
+  var timer = setTimeout(function () { complete(0, ""); }, 15000);
+  function complete(status, text) {
+    if (finished) return;
+    finished = true;
+    clearTimeout(timer);
+    done(status, text);
+  }
+  var req = new XMLHttpRequest();
+  req.open(method, url, true);
+  req.setRequestHeader("Content-Type", "application/json");
+  if (token) req.setRequestHeader("Authorization", "Bearer " + token);
+  req.timeout = 15000;
+  req.onload = function () { complete(req.status, req.responseText); };
+  req.onerror = function () { complete(0, ""); };
+  req.ontimeout = function () { complete(0, ""); };
+  req.send(body ? JSON.stringify(body) : null);
 }
 
 function getPending(done) {

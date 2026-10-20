@@ -29,10 +29,52 @@
       "HR_BPM",
       "HR_RAW_BPM",
       "SLEEP_SECONDS",
-      "SLEEP_RESTFUL_SECONDS"
+      "SLEEP_RESTFUL_SECONDS",
+      "WEATHER_TEMP_C",
+      "WEATHER_TEMP_HIGH_C",
+      "WEATHER_TEMP_LOW_C",
+      "WEATHER_COND",
+      "PANEL_SLOT_A",
+      "PANEL_SLOT_B",
+      "PANEL_SLOT_C",
+      "UI_THEME"
     ],
     "resources": {
-      "media": []
+      "media": [
+        { "file": "images/icon_heartbeat.png", "name": "ICON_HEARTBEAT", "type": "png" },
+        { "file": "images/icon_heartbeat_light.png", "name": "ICON_HEARTBEAT_LIGHT", "type": "png" },
+        { "file": "images/icon_steps.png", "name": "ICON_STEPS", "type": "png" },
+        { "file": "images/icon_steps_light.png", "name": "ICON_STEPS_LIGHT", "type": "png" },
+        { "file": "images/icon_active.png", "name": "ICON_ACTIVE", "type": "png" },
+        { "file": "images/icon_active_light.png", "name": "ICON_ACTIVE_LIGHT", "type": "png" },
+        { "file": "images/icon_sleep.png", "name": "ICON_SLEEP", "type": "png" },
+        { "file": "images/icon_sleep_light.png", "name": "ICON_SLEEP_LIGHT", "type": "png" },
+        { "file": "images/wx_clear.png", "name": "ICON_WX_CLEAR", "type": "png" },
+        { "file": "images/wx_clear_light.png", "name": "ICON_WX_CLEAR_LIGHT", "type": "png" },
+        { "file": "images/wx_partly.png", "name": "ICON_WX_PARTLY", "type": "png" },
+        { "file": "images/wx_partly_light.png", "name": "ICON_WX_PARTLY_LIGHT", "type": "png" },
+        { "file": "images/wx_cloudy.png", "name": "ICON_WX_CLOUDY", "type": "png" },
+        { "file": "images/wx_cloudy_light.png", "name": "ICON_WX_CLOUDY_LIGHT", "type": "png" },
+        { "file": "images/wx_drizzle.png", "name": "ICON_WX_DRIZZLE", "type": "png" },
+        { "file": "images/wx_drizzle_light.png", "name": "ICON_WX_DRIZZLE_LIGHT", "type": "png" },
+        { "file": "images/wx_rain.png", "name": "ICON_WX_RAIN", "type": "png" },
+        { "file": "images/wx_rain_light.png", "name": "ICON_WX_RAIN_LIGHT", "type": "png" },
+        { "file": "images/wx_snow.png", "name": "ICON_WX_SNOW", "type": "png" },
+        { "file": "images/wx_snow_light.png", "name": "ICON_WX_SNOW_LIGHT", "type": "png" },
+        { "file": "images/wx_storm.png", "name": "ICON_WX_STORM", "type": "png" },
+        { "file": "images/wx_storm_light.png", "name": "ICON_WX_STORM_LIGHT", "type": "png" },
+        { "file": "images/batt_empty.png", "name": "ICON_BATT_EMPTY", "type": "png" },
+        { "file": "images/batt_empty_light.png", "name": "ICON_BATT_EMPTY_LIGHT", "type": "png" },
+        { "file": "images/batt_low.png", "name": "ICON_BATT_LOW", "type": "png" },
+        { "file": "images/batt_low_light.png", "name": "ICON_BATT_LOW_LIGHT", "type": "png" },
+        { "file": "images/batt_mid.png", "name": "ICON_BATT_MID", "type": "png" },
+        { "file": "images/batt_mid_light.png", "name": "ICON_BATT_MID_LIGHT", "type": "png" },
+        { "file": "images/batt_full.png", "name": "ICON_BATT_FULL", "type": "png" },
+        { "file": "images/batt_full_light.png", "name": "ICON_BATT_FULL_LIGHT", "type": "png" },
+        { "file": "images/batt_charging.png", "name": "ICON_BATT_CHARGING", "type": "png" },
+        { "file": "images/batt_charging_light.png", "name": "ICON_BATT_CHARGING_LIGHT", "type": "png" },
+        { "file": "fonts/time-bold.ttf", "name": "FONT_TIME_56", "type": "font" }
+      ]
     }
   }
 }

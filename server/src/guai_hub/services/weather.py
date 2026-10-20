@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
+from datetime import time as dtime
 
 import httpx
+from sqlalchemy import select
 
 from guai_hub.config import Settings
 from guai_hub.database import Database
@@ -96,3 +98,46 @@ def _num(value) -> float | None:
     if value is None:
         return None
     return float(value)
+
+
+def _iso(dt: datetime) -> str:
+    return dt.isoformat().replace("+00:00", "Z")
+
+
+async def current(settings: Settings, db: Database) -> dict | None:
+    """Latest conditions + today's high/low for the watchface (device endpoint).
+
+    Returns ``None`` when nothing has been polled yet. ``temp_high_c``/``temp_low_c``
+    are ``None`` when there are no weather rows for today (local date in ``TZ``).
+    """
+    tz = settings.timezone
+    async with db.session_factory() as session:
+        latest = (
+            await session.execute(select(Weather).order_by(Weather.event_time.desc()).limit(1))
+        ).scalar_one_or_none()
+        if latest is None:
+            return None
+
+        now = datetime.now(UTC)
+        latest_dt = datetime.fromisoformat(latest.event_time)
+        age_minutes = max(0, int((now - latest_dt).total_seconds() // 60))
+
+        today = now.astimezone(tz).date()
+        day_start = datetime.combine(today, dtime.min, tzinfo=tz).astimezone(UTC)
+        rows = (
+            await session.execute(
+                select(Weather).where(
+                    Weather.event_time >= _iso(day_start),
+                    Weather.event_time < _iso(day_start + timedelta(days=1)),
+                )
+            )
+        ).scalars().all()
+
+    temps = [r.temperature_c for r in rows if r.temperature_c is not None]
+    return {
+        "temp_c": latest.temperature_c,
+        "condition": latest.condition,
+        "temp_high_c": max(temps) if temps else None,
+        "temp_low_c": min(temps) if temps else None,
+        "age_minutes": age_minutes,
+    }
