@@ -16,6 +16,7 @@ var RETRY_KEY = "GUAI_RETRY";
 var THEME_KEY = "GUAI_THEME";
 
 var pendingQueue = [];
+var batchTotal = 0;      // questions in the current batch (drives the N OF M counter)
 var retryQueue = [];
 
 function settingsReady() {
@@ -122,6 +123,7 @@ function refillQueue() {
   getPending(function (list) {
     if (list === null) { sendStatus("error"); return; }
     pendingQueue = list;
+    batchTotal = list.length;
     if (pendingQueue.length === 0) {
       sendAppMessage({ REQUEST: "idle" });
     } else {
@@ -154,7 +156,9 @@ function askNext() {
     ANSWER_OPTIONS: (item.options || []).join("\n"),
     SCALE_MIN: item.scale ? item.scale.min : 0,
     SCALE_MAX: item.scale ? item.scale.max : 10,
-    DUE_BY: 0
+    DUE_BY: 0,
+    QUESTION_INDEX: Math.max(batchTotal - pendingQueue.length + 1, 1),
+    QUESTION_COUNT: Math.max(batchTotal, pendingQueue.length)
   });
   console.log("pkjs: sent question " + item.question + " (" + item.answer_type + ")");
 }
@@ -232,7 +236,10 @@ function configHtml() {
       '<style>' +
       'html{color-scheme:light}' +
       'body{background:#ffffff;color:#111111;font-family:sans-serif;padding:16px;max-width:480px;margin:0 auto}' +
-      'input{width:100%;box-sizing:border-box;padding:8px;font-size:16px;background:#ffffff;color:#111111;border:1px solid #999;border-radius:6px}' +
+      'input,select{width:100%;box-sizing:border-box;padding:8px;font-size:16px;background:#ffffff;color:#111111;border:1px solid #999;border-radius:6px}' +
+      // Minimal webviews render the select's native arrow with a missing-glyph
+      // box; appearance:none removes it (the whole box stays tappable).
+      'select{-webkit-appearance:none;appearance:none;height:38px}' +
       'button{margin-top:12px;padding:8px 16px;font-size:16px;background:#111111;color:#ffffff;border:0;border-radius:6px}' +
       '</style></head>' +
       '<body>' +

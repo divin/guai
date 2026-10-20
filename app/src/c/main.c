@@ -21,9 +21,14 @@ typedef enum {
 } AppState;
 
 static Window *s_window;
+static Layer *s_chrome_layer;        // canvas: button rail, glyphs, divider, counter bar
+static TextLayer *s_wordmark_layer;
+static TextLayer *s_clock_layer;     // "HH:MM" 24h clock, top right
+static TextLayer *s_counter_layer;   // "N OF M" question counter
 static TextLayer *s_title_layer;
 static TextLayer *s_value_layer;
-static TextLayer *s_hint_layer;
+static TextLayer *s_footer1_layer;   // footer hint 1 (e.g. "UP / DOWN CHOOSE")
+static TextLayer *s_footer2_layer;   // footer hint 2 (e.g. "SELECT TO SEND")
 
 // Theme tokens — same palette as the watchface (see apply_colors below and the
 // watchface's apply_colors in watchface/src/c/guai.c).
@@ -47,6 +52,9 @@ static int s_scale_max = 10;
 static int s_selection = 0;          // boolean 0/1, scale value, or option index
 static char s_last_status[40];
 static char s_idle_hint[48];         // hint line for the STATE_IDLE screen
+static int s_q_index = 0;            // question counter (from pkjs: QUESTION_INDEX/COUNT)
+static int s_q_count = 0;
+static char s_clock_buf[8];
 
 // ---------------------------------------------------------------------------
 // Text helpers
@@ -77,53 +85,89 @@ static void apply_colors(int theme) {
   }
   s_theme = theme;
   if (s_window) window_set_background_color(s_window, s_col_bg);
+  if (s_chrome_layer) layer_mark_dirty(s_chrome_layer);
+  if (s_wordmark_layer) text_layer_set_text_color(s_wordmark_layer, s_col_accent);
+  if (s_clock_layer) text_layer_set_text_color(s_clock_layer, s_col_fg);
+  if (s_counter_layer) text_layer_set_text_color(s_counter_layer, s_col_accent);
   if (s_title_layer) text_layer_set_text_color(s_title_layer, s_col_fg);
   if (s_value_layer) text_layer_set_text_color(s_value_layer, s_col_fg);
-  if (s_hint_layer) text_layer_set_text_color(s_hint_layer, s_col_muted);
+  if (s_footer1_layer) text_layer_set_text_color(s_footer1_layer, s_col_muted);
+  if (s_footer2_layer) text_layer_set_text_color(s_footer2_layer, s_col_muted);
+}
+
+// The counter shows on every question-bearing screen (N OF M from pkjs).
+static bool counter_visible(void) {
+  return s_q_count > 0 && (s_state == STATE_SELECT || s_state == STATE_CONFIRM ||
+                           s_state == STATE_SENDING || s_state == STATE_FEEDBACK);
 }
 
 static void render(void) {
+  static char cbuf[16];
+  if (counter_visible()) snprintf(cbuf, sizeof(cbuf), "%d OF %d", s_q_index, s_q_count);
+  else cbuf[0] = '\0';
+  set_text(s_counter_layer, cbuf);
   switch (s_state) {
     case STATE_LOADING:
-      set_text(s_title_layer, "GUAI");
+      set_text(s_title_layer, "");
       set_text(s_value_layer, "Loading…");
-      set_text(s_hint_layer, "");
+      set_text(s_footer1_layer, "");
+      set_text(s_footer2_layer, "");
       break;
     case STATE_SELECT:
       set_text(s_title_layer, s_question);
       if (strcmp(s_answer_type, "boolean") == 0) {
         set_text(s_value_layer, s_selection ? "Yes" : "No");
-        set_text(s_hint_layer, "UP/DOWN toggle · SELECT confirm");
+        set_text(s_footer1_layer, "UP / DOWN CHOOSE");
       } else if (strcmp(s_answer_type, "scale") == 0) {
         static char buf[16];
         snprintf(buf, sizeof(buf), "%d", s_selection);
         set_text(s_value_layer, buf);
-        set_text(s_hint_layer, "UP/DOWN value · SELECT confirm");
+        set_text(s_footer1_layer, "UP / DOWN VALUE");
       } else {
         set_text(s_value_layer, s_options[s_selection]);
-        set_text(s_hint_layer, "UP/DOWN option · SELECT confirm");
+        set_text(s_footer1_layer, "UP / DOWN OPTION");
       }
+      set_text(s_footer2_layer, "SELECT TO SEND");
       break;
     case STATE_CONFIRM:
-      set_text(s_title_layer, "Submit?");
+      set_text(s_title_layer, s_question);
       set_text(s_value_layer, s_last_status);
-      set_text(s_hint_layer, "SELECT yes · BACK no");
+      set_text(s_footer1_layer, "SELECT SUBMITS");
+      set_text(s_footer2_layer, "BACK TO EDIT");
       break;
     case STATE_SENDING:
       set_text(s_title_layer, s_question);
       set_text(s_value_layer, "Sending…");
-      set_text(s_hint_layer, "");
+      set_text(s_footer1_layer, "");
+      set_text(s_footer2_layer, "");
       break;
     case STATE_FEEDBACK:
       set_text(s_title_layer, s_question);
       set_text(s_value_layer, s_last_status);
-      set_text(s_hint_layer, "");
+      set_text(s_footer1_layer, "");
+      set_text(s_footer2_layer, "");
       break;
     case STATE_IDLE:
-      set_text(s_title_layer, "GUAI Check-In");
+      set_text(s_title_layer, "");
       set_text(s_value_layer, s_last_status);
-      set_text(s_hint_layer, s_idle_hint);
+      set_text(s_footer1_layer, s_idle_hint);
+      set_text(s_footer2_layer, "");
       break;
+  }
+
+  // vertical placement of the value text: hug the question on question screens,
+  // vertically centered on the idle/loading screens
+  int w = layer_get_bounds(window_get_root_layer(s_window)).size.w - 34;
+  if (s_state == STATE_SELECT || s_state == STATE_CONFIRM ||
+      s_state == STATE_SENDING || s_state == STATE_FEEDBACK) {
+    GSize ts = text_layer_get_content_size(s_title_layer);
+    int th = (int)ts.h;
+    if (th < 10) th = 28;               // fallback until the layer has laid out
+    int vy = 52 + th + 10;
+    if (vy > 138) vy = 138;             // keep clear of the footer
+    layer_set_frame(text_layer_get_layer(s_value_layer), GRect(10, vy, w, 46));
+  } else {
+    layer_set_frame(text_layer_get_layer(s_value_layer), GRect(10, 100, w, 46));
   }
 }
 
@@ -217,6 +261,11 @@ static void begin_question(DictionaryIterator *iter) {
   if (strcmp(s_answer_type, "boolean") == 0) s_selection = 0;
   else if (strcmp(s_answer_type, "scale") == 0) s_selection = s_scale_min;
   else s_selection = 0;
+
+  Tuple *qi = dict_find(iter, MESSAGE_KEY_QUESTION_INDEX);
+  Tuple *qc = dict_find(iter, MESSAGE_KEY_QUESTION_COUNT);
+  s_q_index = qi ? (int)qi->value->int32 : 0;
+  s_q_count = qc ? (int)qc->value->int32 : 0;
 
   s_state = STATE_SELECT;
   render();
@@ -343,6 +392,64 @@ static void click_config_provider(void *context) {
 }
 
 // ---------------------------------------------------------------------------
+// Chrome canvas: button rail + glyphs + header divider + counter underline.
+// The rail sits on the right edge, glyph positions hint at the physical
+// UP / SELECT / DOWN buttons (middle-right of the watch).
+
+static bool chrome_counter_visible(void) {
+  return counter_visible();
+}
+
+static void chrome_update_proc(Layer *layer, GContext *ctx) {
+  (void)layer;
+  GRect bounds = layer_get_bounds(layer);
+  // button rail
+  graphics_context_set_fill_color(ctx, s_col_panel);
+  graphics_fill_rect(ctx, GRect(bounds.size.w - 24, 0, 24, bounds.size.h), 0, GCornerNone);
+  // glyphs aligned to the physical buttons, theme-colored
+  graphics_context_set_stroke_color(ctx, s_col_accent);
+  // up chevron
+  for (int o = 0; o < 2; o++) {
+    graphics_draw_line(ctx, GPoint(182, 50 + o), GPoint(188, 44 + o));
+    graphics_draw_line(ctx, GPoint(188, 44 + o), GPoint(194, 50 + o));
+  }
+  // check (select / send)
+  for (int o = 0; o < 2; o++) {
+    graphics_draw_line(ctx, GPoint(181, 113 + o), GPoint(186, 118 + o));
+    graphics_draw_line(ctx, GPoint(186, 118 + o), GPoint(195, 106 + o));
+  }
+  // down chevron
+  for (int o = 0; o < 2; o++) {
+    graphics_draw_line(ctx, GPoint(182, 178 + o), GPoint(188, 184 + o));
+    graphics_draw_line(ctx, GPoint(188, 184 + o), GPoint(194, 178 + o));
+  }
+  // thin divider under the header (content area only)
+  graphics_context_set_fill_color(ctx, s_col_muted);
+  graphics_fill_rect(ctx, GRect(0, 27, bounds.size.w - 24, 1), 0, GCornerNone);
+  // short accent bar under the question counter
+  if (chrome_counter_visible()) {
+    graphics_context_set_fill_color(ctx, s_col_accent);
+    graphics_fill_rect(ctx, GRect(10, 46, 26, 3), 0, GCornerNone);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 24h clock (minute tick)
+
+static void update_clock(void) {
+  time_t now = time(NULL);
+  struct tm *tm = localtime(&now);
+  strftime(s_clock_buf, sizeof(s_clock_buf), "%H:%M", tm);
+  set_text(s_clock_layer, s_clock_buf);
+}
+
+static void tick_handler(struct tm *tick_time, TimeUnits units) {
+  (void)tick_time;
+  (void)units;
+  update_clock();
+}
+
+// ---------------------------------------------------------------------------
 // Window lifecycle
 
 static void window_load(Window *window) {
@@ -350,37 +457,84 @@ static void window_load(Window *window) {
   GRect bounds = layer_get_bounds(root);
   apply_colors(s_theme);
 
-  s_title_layer = text_layer_create(GRect(12, 0, bounds.size.w - 24, 84));
+  // chrome canvas under everything
+  s_chrome_layer = layer_create(bounds);
+  layer_set_update_proc(s_chrome_layer, chrome_update_proc);
+  layer_add_child(root, s_chrome_layer);
+
+  // header: GUAI wordmark (accent) + 24h clock (hours and minutes identical)
+  s_wordmark_layer = text_layer_create(GRect(8, 3, 60, 22));
+  text_layer_set_background_color(s_wordmark_layer, GColorClear);
+  text_layer_set_text_color(s_wordmark_layer, s_col_accent);
+  text_layer_set_font(s_wordmark_layer, fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD));
+  text_layer_set_text_alignment(s_wordmark_layer, GTextAlignmentLeft);
+  set_text(s_wordmark_layer, "GUAI");
+
+  s_clock_layer = text_layer_create(GRect(140, 4, 54, 22));
+  text_layer_set_background_color(s_clock_layer, GColorClear);
+  text_layer_set_text_color(s_clock_layer, s_col_fg);
+  text_layer_set_font(s_clock_layer, fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD));
+  text_layer_set_text_alignment(s_clock_layer, GTextAlignmentRight);
+
+  // question counter: "N OF M" in accent with a short teal underline bar
+  s_counter_layer = text_layer_create(GRect(10, 28, 100, 16));
+  text_layer_set_background_color(s_counter_layer, GColorClear);
+  text_layer_set_text_color(s_counter_layer, s_col_accent);
+  text_layer_set_font(s_counter_layer, fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD));
+  text_layer_set_text_alignment(s_counter_layer, GTextAlignmentLeft);
+
+  // question: large bold white, wrapping to up to three lines
+  s_title_layer = text_layer_create(GRect(10, 52, bounds.size.w - 34, 84));
   text_layer_set_background_color(s_title_layer, GColorClear);
-  text_layer_set_text_color(s_title_layer, GColorWhite);
+  text_layer_set_text_color(s_title_layer, s_col_fg);
   text_layer_set_font(s_title_layer, fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD));
   text_layer_set_text_alignment(s_title_layer, GTextAlignmentLeft);
   text_layer_set_overflow_mode(s_title_layer, GTextOverflowModeWordWrap);
 
-  s_value_layer = text_layer_create(GRect(12, 78, bounds.size.w - 24, 62));
+  // current value / interim status text (two lines max, above the footer)
+  s_value_layer = text_layer_create(GRect(10, 138, bounds.size.w - 34, 46));
   text_layer_set_background_color(s_value_layer, GColorClear);
-  text_layer_set_text_color(s_value_layer, GColorWhite);
-  text_layer_set_font(s_value_layer, fonts_get_system_font(FONT_KEY_BITHAM_30_BLACK));
+  text_layer_set_text_color(s_value_layer, s_col_fg);
+  text_layer_set_font(s_value_layer, fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD));
   text_layer_set_text_alignment(s_value_layer, GTextAlignmentCenter);
   text_layer_set_overflow_mode(s_value_layer, GTextOverflowModeWordWrap);
 
-  s_hint_layer = text_layer_create(GRect(12, 138, bounds.size.w - 24, 30));
-  text_layer_set_background_color(s_hint_layer, GColorClear);
-  text_layer_set_text_color(s_hint_layer, s_col_muted);
-  text_layer_set_font(s_hint_layer, fonts_get_system_font(FONT_KEY_GOTHIC_14));
-  text_layer_set_text_alignment(s_hint_layer, GTextAlignmentCenter);
+  // footer: two muted caps hints
+  s_footer1_layer = text_layer_create(GRect(10, 190, bounds.size.w - 34, 17));
+  text_layer_set_background_color(s_footer1_layer, GColorClear);
+  text_layer_set_text_color(s_footer1_layer, s_col_muted);
+  text_layer_set_font(s_footer1_layer, fonts_get_system_font(FONT_KEY_GOTHIC_14));
+  text_layer_set_text_alignment(s_footer1_layer, GTextAlignmentLeft);
 
+  s_footer2_layer = text_layer_create(GRect(10, 208, bounds.size.w - 34, 17));
+  text_layer_set_background_color(s_footer2_layer, GColorClear);
+  text_layer_set_text_color(s_footer2_layer, s_col_muted);
+  text_layer_set_font(s_footer2_layer, fonts_get_system_font(FONT_KEY_GOTHIC_14));
+  text_layer_set_text_alignment(s_footer2_layer, GTextAlignmentLeft);
+
+  layer_add_child(root, text_layer_get_layer(s_wordmark_layer));
+  layer_add_child(root, text_layer_get_layer(s_clock_layer));
+  layer_add_child(root, text_layer_get_layer(s_counter_layer));
   layer_add_child(root, text_layer_get_layer(s_title_layer));
   layer_add_child(root, text_layer_get_layer(s_value_layer));
-  layer_add_child(root, text_layer_get_layer(s_hint_layer));
+  layer_add_child(root, text_layer_get_layer(s_footer1_layer));
+  layer_add_child(root, text_layer_get_layer(s_footer2_layer));
 
+  update_clock();
+  tick_timer_service_subscribe(MINUTE_UNIT, tick_handler);
   render();
 }
 
 static void window_unload(Window *window) {
+  tick_timer_service_unsubscribe();
+  layer_destroy(s_chrome_layer);
+  text_layer_destroy(s_wordmark_layer);
+  text_layer_destroy(s_clock_layer);
+  text_layer_destroy(s_counter_layer);
   text_layer_destroy(s_title_layer);
   text_layer_destroy(s_value_layer);
-  text_layer_destroy(s_hint_layer);
+  text_layer_destroy(s_footer1_layer);
+  text_layer_destroy(s_footer2_layer);
 }
 
 static void init(void) {

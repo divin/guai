@@ -30,6 +30,8 @@
       "ANSWER_CHOICE",
       "STATUS_TEXT",
       "DUE_BY",
+      "QUESTION_INDEX",
+      "QUESTION_COUNT",
       "UI_THEME"
     ],
     "resources": {
