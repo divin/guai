@@ -1,24 +1,58 @@
-# GUAI server — example Compose file for self-hosting.
+# GUAI server — two instances from one image, split by trust boundary.
 # Pulls the prebuilt image from GHCR by default (published on every version tag).
 # Local builds: docker build -t guai:local .  then  GUAI_IMAGE=guai:local docker compose up -d
 #
 # Copy example.env to .env and set GUAI_SYNC_TOKEN (>= 16 chars).
 # Linux bind mounts: make ./data writable by the container's non-root user (uid 10001):
 #   mkdir -p data && chown 10001:10001 data   (or: chmod 777 data)
-# Recommended: bind to a trusted LAN only.
+#
+# Trust boundary — which instance may touch the internet:
+#   guai        INTERNAL — do not expose. Dashboard, management APIs, frontend,
+#               scheduler (tick, weather fetch, Pushover), migrations.
+#   guai-device DEVICE — the ONLY instance to expose via reverse proxy/TLS.
+#               Just the four token-protected endpoints the watchface and
+#               check-in app need; no dashboard, no frontend, no scheduler.
 
 services:
+  # ------------------------------------------------------------------ internal
+  # Trusted LAN only: serves the dashboard frontend and the unauthenticated
+  # management APIs (check-in definitions CRUD, CSV export, insights, config).
+  # Runs the one-minute tick and owns database migrations.
   guai:
-    image: ghcr.io/divin/guai:latest
+    image: ${GUAI_IMAGE:-ghcr.io/divin/guai:latest}
     container_name: guai
     ports:
       - "8080:8000"
     environment:
       TZ: ${TZ:-Europe/Berlin}
       GUAI_SYNC_TOKEN: ${GUAI_SYNC_TOKEN:?GUAI_SYNC_TOKEN is required (see example.env)}
+      GUAI_DB_PATH: /data/guai.sqlite3
       GUAI_WEATHER_INTERVAL_MINUTES: ${GUAI_WEATHER_INTERVAL_MINUTES:-60}
       PUSHOVER_TOKEN: ${PUSHOVER_TOKEN:-}
       PUSHOVER_USER: ${PUSHOVER_USER:-}
+      # full mode (default): internal + device surfaces, scheduler, migrations
+      GUAI_SERVER_MODE: full
     volumes:
-      - ./data:/data
+      - ${HOST_DATA_DIR:-./data}:/data
+    restart: unless-stopped
+
+  # -------------------------------------------------------------------- device
+  # Exposed instance: only POST /api/sync, GET /api/checkins/pending,
+  # POST /api/checkins/instances/{id}/responses and GET /api/weather/current,
+  # all bearer-token protected. No dashboard, no frontend. Shares the SQLite
+  # file but runs no scheduler and no migrations (the internal instance owns
+  # those) — so the tick and notifications fire exactly once.
+  guai-device:
+    image: ${GUAI_IMAGE:-ghcr.io/divin/guai:latest}
+    container_name: guai-device
+    ports:
+      - "8081:8000"
+    environment:
+      TZ: ${TZ:-Europe/Berlin}
+      GUAI_SYNC_TOKEN: ${GUAI_SYNC_TOKEN:?GUAI_SYNC_TOKEN is required (see example.env)}
+      GUAI_DB_PATH: /data/guai.sqlite3
+      GUAI_SERVER_MODE: device
+      GUAI_SCHEDULER: "false"
+    volumes:
+      - ${HOST_DATA_DIR:-./data}:/data
     restart: unless-stopped
