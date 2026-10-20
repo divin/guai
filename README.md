@@ -23,7 +23,7 @@ flowchart LR
 
 The **watchface** reads Pebble's Health API each minute, sends snapshots to its JS layer, and uploads them (`POST /api/sync`, bearer token) with offline buffering and idempotent upserts. The **server** runs a one-minute tick in your timezone that materialises due check-in instances, marks missed ones after their answer window, and fires a *generic* Pushover ping. The **check-in app** pulls pending questions one at a time — toggle, stepper, or option list — and submits the answer straight from the watch. The **dashboard** (Zola + vanilla JS, hand-rolled SVG charts) aggregates everything per local day, computes statistics, and plots correlations.
 
-The watchface's bottom panel is fully user-configurable — each of the three slots can show **steps**, **sleep**, **active minutes**, or **live weather** (server data only, `--` when unavailable) — with a light/dark theme and an adjustable daily step goal, all from the settings gear. The
+The watchface's bottom panel is fully user-configurable — each of the three slots can show **steps**, **sleep**, **active minutes**, or **live weather** (server data only, `--` when unavailable) — with a light/dark theme, an adjustable daily step goal, and an adjustable upload interval (minutes) for battery tuning, all from the settings gear. The
 **check-in app** uses the same visual language: mockup-faithful screens per answer type
 (YES/NO tiles, a big value with a segmented scale bar, scrolling option rows), a `N OF M`
 progress counter, a light/dark theme of its own, and a confirm step before every submission:
@@ -81,7 +81,7 @@ GUAI is installed with the current official app (Core Devices **"Pebble"** / **"
 
 > **Compatibility:** GUAI's Pebble apps are built for and only tested on the **Pebble Time 2 (emery platform)**. They may install on other platforms, but health metrics, layout, and sync behavior are only verified there — no other hardware is supported.
 
-Both apps ask once for a **Server URL** and the **token** from your `.env`. At home that is the **device instance** (e.g. `http://192.168.1.10:8081`); away from home, expose `guai-device` via an HTTPS reverse proxy and point the apps at that URL — the internal instance stays on your LAN. To (re)configure, tap the **⚙️ settings** icon next to the app in the Pebble mobile app and save the same fields. From then on the watchface uploads every minute while displayed and buffers offline data; the check-in app polls on open.
+Both apps ask once for a **Server URL** and the **token** from your `.env`. At home that is the **device instance** (e.g. `http://192.168.1.10:8081`); away from home, expose `guai-device` via an HTTPS reverse proxy and point the apps at that URL — the internal instance stays on your LAN. To (re)configure, tap the **⚙️ settings** icon next to the app in the Pebble mobile app and save the same fields. From then on the watchface snapshots and uploads every minute (adjustable in the settings, 1–60 minutes) while displayed and buffers offline data; the check-in app polls on open.
 
 A check-in is worth defining when you want to remember something repeatedly: `Did you take your medication?` (boolean, daily 09:00 + 21:00), `How is your energy today?` (scale 1–10), `Headache?` (`No headache / Mild / Severe`). Each definition has an answer window (default 60 min — after that the instance is recorded as *missed*, which is itself data) and an optional single reminder ping.
 
