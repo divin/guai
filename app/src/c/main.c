@@ -25,6 +25,7 @@ static Layer *s_chrome_layer;        // canvas: button rail, glyphs, divider, co
 static TextLayer *s_wordmark_layer;
 static TextLayer *s_clock_layer;     // "HH:MM" 24h clock, top right
 static TextLayer *s_counter_layer;   // "N OF M" question counter
+static TextLayer *s_anslabel_layer;  // "YOUR ANSWER" label on the confirm screen
 static TextLayer *s_title_layer;
 static TextLayer *s_value_layer;
 static TextLayer *s_footer1_layer;   // footer hint 1 (e.g. "UP / DOWN CHOOSE")
@@ -89,6 +90,7 @@ static void apply_colors(int theme) {
   if (s_wordmark_layer) text_layer_set_text_color(s_wordmark_layer, s_col_accent);
   if (s_clock_layer) text_layer_set_text_color(s_clock_layer, s_col_fg);
   if (s_counter_layer) text_layer_set_text_color(s_counter_layer, s_col_accent);
+  if (s_anslabel_layer) text_layer_set_text_color(s_anslabel_layer, s_col_muted);
   if (s_title_layer) text_layer_set_text_color(s_title_layer, s_col_fg);
   if (s_value_layer) text_layer_set_text_color(s_value_layer, s_col_fg);
   if (s_footer1_layer) text_layer_set_text_color(s_footer1_layer, s_col_muted);
@@ -106,6 +108,10 @@ static void render(void) {
   if (counter_visible()) snprintf(cbuf, sizeof(cbuf), "%d OF %d", s_q_index, s_q_count);
   else cbuf[0] = '\0';
   set_text(s_counter_layer, cbuf);
+  set_text(s_anslabel_layer, "");   // only the confirm screen shows it
+  // value font: big on question screens, smaller on the confirm screen
+  text_layer_set_font(s_value_layer, fonts_get_system_font(
+      s_state == STATE_CONFIRM ? FONT_KEY_GOTHIC_18_BOLD : FONT_KEY_GOTHIC_24_BOLD));
   switch (s_state) {
     case STATE_LOADING:
       set_text(s_title_layer, "");
@@ -130,7 +136,8 @@ static void render(void) {
       set_text(s_footer2_layer, "SELECT TO SEND");
       break;
     case STATE_CONFIRM:
-      set_text(s_title_layer, s_question);
+      set_text(s_title_layer, "Confirm?");
+      set_text(s_anslabel_layer, "YOUR ANSWER");
       set_text(s_value_layer, s_last_status);
       set_text(s_footer1_layer, "SELECT SUBMITS");
       set_text(s_footer2_layer, "BACK TO EDIT");
@@ -158,8 +165,15 @@ static void render(void) {
   // vertical placement of the value text: hug the question on question screens,
   // vertically centered on the idle/loading screens
   int w = layer_get_bounds(window_get_root_layer(s_window)).size.w - 34;
-  if (s_state == STATE_SELECT || s_state == STATE_CONFIRM ||
-      s_state == STATE_SENDING || s_state == STATE_FEEDBACK) {
+  if (s_state == STATE_CONFIRM) {
+    GSize ts = text_layer_get_content_size(s_title_layer);
+    int th = (int)ts.h;
+    if (th < 10) th = 28;
+    int ly = 52 + th + 6;
+    layer_set_frame(text_layer_get_layer(s_anslabel_layer), GRect(10, ly, w, 16));
+    layer_set_frame(text_layer_get_layer(s_value_layer), GRect(10, ly + 18, w, 30));
+  } else if (s_state == STATE_SELECT || s_state == STATE_SENDING ||
+             s_state == STATE_FEEDBACK) {
     GSize ts = text_layer_get_content_size(s_title_layer);
     int th = (int)ts.h;
     if (th < 10) th = 28;               // fallback until the layer has laid out
@@ -362,10 +376,14 @@ static void down_click(ClickRecognizerRef recognizer, void *context) {
 static void select_click(ClickRecognizerRef recognizer, void *context) {
   if (s_state == STATE_SELECT) {
     s_state = STATE_CONFIRM;
-    snprintf(s_last_status, sizeof(s_last_status),
-             strcmp(s_answer_type, "boolean") == 0
-                 ? (s_selection ? "Yes" : "No")
-                 : (strcmp(s_answer_type, "scale") == 0 ? "the value" : "your choice"));
+    // what will be submitted, shown under "Confirm?"
+    if (strcmp(s_answer_type, "boolean") == 0) {
+      snprintf(s_last_status, sizeof(s_last_status), s_selection ? "Yes" : "No");
+    } else if (strcmp(s_answer_type, "scale") == 0) {
+      snprintf(s_last_status, sizeof(s_last_status), "%d", s_selection);
+    } else {
+      snprintf(s_last_status, sizeof(s_last_status), "%s", s_options[s_selection]);
+    }
     render();
   } else if (s_state == STATE_CONFIRM) {
     s_state = STATE_SENDING;
@@ -483,6 +501,13 @@ static void window_load(Window *window) {
   text_layer_set_font(s_counter_layer, fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD));
   text_layer_set_text_alignment(s_counter_layer, GTextAlignmentLeft);
 
+  // "YOUR ANSWER" label on the confirm screen (hidden elsewhere)
+  s_anslabel_layer = text_layer_create(GRect(10, 80, bounds.size.w - 34, 16));
+  text_layer_set_background_color(s_anslabel_layer, GColorClear);
+  text_layer_set_text_color(s_anslabel_layer, s_col_muted);
+  text_layer_set_font(s_anslabel_layer, fonts_get_system_font(FONT_KEY_GOTHIC_14));
+  text_layer_set_text_alignment(s_anslabel_layer, GTextAlignmentCenter);
+
   // question: large bold white, wrapping to up to three lines
   s_title_layer = text_layer_create(GRect(10, 52, bounds.size.w - 34, 84));
   text_layer_set_background_color(s_title_layer, GColorClear);
@@ -515,6 +540,7 @@ static void window_load(Window *window) {
   layer_add_child(root, text_layer_get_layer(s_wordmark_layer));
   layer_add_child(root, text_layer_get_layer(s_clock_layer));
   layer_add_child(root, text_layer_get_layer(s_counter_layer));
+  layer_add_child(root, text_layer_get_layer(s_anslabel_layer));
   layer_add_child(root, text_layer_get_layer(s_title_layer));
   layer_add_child(root, text_layer_get_layer(s_value_layer));
   layer_add_child(root, text_layer_get_layer(s_footer1_layer));
@@ -531,6 +557,7 @@ static void window_unload(Window *window) {
   text_layer_destroy(s_wordmark_layer);
   text_layer_destroy(s_clock_layer);
   text_layer_destroy(s_counter_layer);
+  text_layer_destroy(s_anslabel_layer);
   text_layer_destroy(s_title_layer);
   text_layer_destroy(s_value_layer);
   text_layer_destroy(s_footer1_layer);
