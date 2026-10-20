@@ -1,7 +1,7 @@
 {
   "name": "guai",
   "author": "Divin Gavran",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "keywords": ["pebble-app"],
   "private": true,
   "dependencies": {},
@@ -10,6 +10,7 @@
     "uuid": "d2637251-644a-4bdb-88fa-41df52f2a444",
     "sdkVersion": "3",
     "enableMultiJS": true,
+    "capabilities": ["configurable"],
     "targetPlatforms": [
       "emery"
     ],

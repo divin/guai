@@ -1,7 +1,7 @@
 {
   "name": "guai-checkin",
   "author": "Divin Gavran",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "keywords": ["pebble-app", "checkin"],
   "private": true,
   "dependencies": {},
@@ -10,6 +10,7 @@
     "uuid": "70f54c97-07c2-404e-b093-37dd80c5f4cd",
     "sdkVersion": "3",
     "enableMultiJS": true,
+    "capabilities": ["configurable"],
     "targetPlatforms": [
       "emery"
     ],

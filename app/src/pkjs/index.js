@@ -102,6 +102,12 @@ function submitAnswer(instanceId, answerType, value) {
 // --- Question queue ---------------------------------------------------------
 
 function refillQueue() {
+  if (!settingsReady()) {
+    // No server/token configured: tell C explicitly instead of letting it sit on
+    // "Loading…" forever (the generic error status is only shown while sending).
+    sendAppMessage({ REQUEST: "unconfigured" });
+    return;
+  }
   getPending(function (list) {
     if (list === null) { sendStatus("error"); return; }
     pendingQueue = list;
@@ -182,16 +188,35 @@ Pebble.addEventListener("ready", function () {
 
 // --- Configuration page (self-contained) --------------------------------------
 
+function htmlEscape(s) {
+  // Attribute values must be HTML-escaped, not URI-encoded, so values like
+  // "http://host:8080?x=1&y=2" display and re-save unmodified.
+  return String(s).replace(/[&<>"']/g, function (c) {
+    return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+  });
+}
+
 function configHtml() {
-  var srv = encodeURIComponent(localStorage.getItem(SERVER_KEY) || "");
-  var tok = encodeURIComponent(localStorage.getItem(TOKEN_KEY) || "");
+  var srv = htmlEscape(localStorage.getItem(SERVER_KEY) || "");
+  var tok = htmlEscape(localStorage.getItem(TOKEN_KEY) || "");
   return "data:text/html;charset=utf-8," +
     encodeURIComponent(
-      '<!DOCTYPE html><html><body style="font-family:sans-serif;padding:16px">' +
+      '<!DOCTYPE html><html><head><meta charset="utf-8">' +
+      '<meta name="viewport" content="width=device-width, initial-scale=1">' +
+      // Explicit light scheme: the webview may follow the OS dark mode, which
+      // renders a dark background while text/inputs default to black.
+      '<meta name="color-scheme" content="light">' +
+      '<style>' +
+      'html{color-scheme:light}' +
+      'body{background:#ffffff;color:#111111;font-family:sans-serif;padding:16px;max-width:480px;margin:0 auto}' +
+      'input{width:100%;box-sizing:border-box;padding:8px;font-size:16px;background:#ffffff;color:#111111;border:1px solid #999;border-radius:6px}' +
+      'button{margin-top:12px;padding:8px 16px;font-size:16px;background:#111111;color:#ffffff;border:0;border-radius:6px}' +
+      '</style></head>' +
+      '<body>' +
       '<h2>GUAI Check-In</h2>' +
       '<form id="f">' +
-      '<label>Server URL<br><input id="srv" style="width:100%" value="' + srv + '"></label><br><br>' +
-      '<label>Token<br><input id="tok" style="width:100%" value="' + tok + '"></label><br><br>' +
+      '<label>Server URL<br><input id="srv" value="' + srv + '"></label><br><br>' +
+      '<label>Token<br><input id="tok" value="' + tok + '"></label><br><br>' +
       '<button type="submit">Save</button></form>' +
       '<script>document.getElementById("f").onsubmit=function(){' +
       'var send=function(){var opts={srv:document.getElementById("srv").value,' +

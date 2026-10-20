@@ -17,6 +17,7 @@ typedef enum {
   STATE_CONFIRM,
   STATE_SENDING,
   STATE_FEEDBACK,
+  STATE_IDLE,       // no question to show: unconfigured / no pending / skipped
 } AppState;
 
 static Window *s_window;
@@ -35,6 +36,7 @@ static int s_scale_min = 0;
 static int s_scale_max = 10;
 static int s_selection = 0;          // boolean 0/1, scale value, or option index
 static char s_last_status[40];
+static char s_idle_hint[48];         // hint line for the STATE_IDLE screen
 
 // ---------------------------------------------------------------------------
 // Text helpers
@@ -81,7 +83,20 @@ static void render(void) {
       set_text(s_value_layer, s_last_status);
       set_text(s_hint_layer, "");
       break;
+    case STATE_IDLE:
+      set_text(s_title_layer, "GUAI Check-In");
+      set_text(s_value_layer, s_last_status);
+      set_text(s_hint_layer, s_idle_hint);
+      break;
   }
+}
+
+// Idle/status screen (no question on display): unconfigured, no pending, skipped.
+static void show_idle(const char *value, const char *hint) {
+  snprintf(s_last_status, sizeof(s_last_status), "%s", value);
+  snprintf(s_idle_hint, sizeof(s_idle_hint), "%s", hint);
+  s_state = STATE_IDLE;
+  render();
 }
 
 // ---------------------------------------------------------------------------
@@ -191,19 +206,24 @@ static void inbox_received(DictionaryIterator *iter, void *context) {
   Tuple *status = dict_find(iter, MESSAGE_KEY_STATUS_TEXT);
 
   if (status) {                      // submit result from pkjs
-    if (s_state == STATE_SENDING) handle_status(iter);
+    if (s_state == STATE_SENDING) {
+      handle_status(iter);
+    } else if (strcmp(status->value->cstring, "error") == 0 &&
+               (s_state == STATE_LOADING || s_state == STATE_IDLE)) {
+      // initial pending-fetch failed (server unreachable): never hang on Loading
+      show_idle("Server unreachable", "UP to retry");
+    }
     return;
   }
   if (inst && !s_busy) {             // a new question — only when we're free
     s_busy = true;
     begin_question(iter);
+  } else if (req && strcmp(req->value->cstring, "unconfigured") == 0) {
+    // no server URL/token configured in the phone-side settings
+    show_idle("Not configured", "Set server in phone settings");
   } else if (req && strcmp(req->value->cstring, "idle") == 0) {
     // no pending check-ins from pkjs
-    s_state = STATE_SELECT;
-    set_text(s_title_layer, "GUAI Check-In");
-    set_text(s_value_layer, "No pending");
-    set_text(s_hint_layer, "UP to refresh");
-    render();
+    show_idle("No pending", "UP to refresh");
   }
 }
 
@@ -227,8 +247,18 @@ static void adjust(int delta) {
 }
 
 static void up_click(ClickRecognizerRef recognizer, void *context) {
-  if (s_state == STATE_SELECT) { adjust(1); return; }
-  if (s_state == STATE_FEEDBACK || s_state == STATE_LOADING) request_next();  // manual refresh
+  if (s_state == STATE_SELECT) {
+    if (s_busy) {
+      adjust(1);
+    } else {
+      // no question on screen: UP re-checks the server
+      request_next();
+    }
+    return;
+  }
+  if (s_state == STATE_FEEDBACK || s_state == STATE_LOADING || s_state == STATE_IDLE) {
+    request_next();  // manual refresh
+  }
 }
 
 static void down_click(ClickRecognizerRef recognizer, void *context) {
@@ -256,11 +286,7 @@ static void back_click(ClickRecognizerRef recognizer, void *context) {
     render();
   } else if (s_state == STATE_SELECT) {  // cancel this question, keep it pending
     s_busy = false;
-    s_state = STATE_SELECT;
-    set_text(s_title_layer, "GUAI Check-In");
-    set_text(s_value_layer, "Skipped");
-    set_text(s_hint_layer, "UP to check again");
-    render();
+    show_idle("Skipped", "UP to check again");
   }
 }
 
