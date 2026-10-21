@@ -61,6 +61,7 @@ export const Settings = {
         <h3>About</h3>
         <p class="muted">GUAI — Gather · Understand · Anticipate.</p>
         <p class="muted">Server version <code>${escapeHtml(version)}</code>. Data stays on your server and in your SQLite database.</p>
+        <p class="muted">Source code and documentation: <a href="https://github.com/divin/guai" target="_blank" rel="noopener noreferrer">github.com/divin/guai</a></p>
       </div>`;
 
     app.querySelector("#loc-go").addEventListener("click", async () => {

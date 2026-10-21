@@ -71,6 +71,8 @@ h2.view-title { margin: 0 0 0.8rem; }
 .btn:disabled { opacity: 0.5; cursor: default; }
 .row { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
 .muted { color: var(--muted); }
+a { color: var(--accent2); text-decoration: none; }
+a:hover { text-decoration: underline; }
 table { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
 th, td { text-align: left; padding: 0.4rem 0.6rem; border-bottom: 1px solid var(--border); }
 th { color: var(--muted); font-weight: 600; }
@@ -85,3 +87,34 @@ svg text { fill: var(--muted); font-size: 10px; }
 .charts-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.8rem; }
 @media (max-width: 760px) { .charts-row { grid-template-columns: 1fr; } }
 .breakline { word-break: break-word; }
+
+/* --- 1.5.0 overview trends & live cards ------------------------------------- */
+
+/* Trend indicator (up/down/flat arrow + delta) colored by semantic direction. */
+.trend {
+  display: inline-flex; align-items: center; gap: 0.25rem;
+  margin-top: 0.4rem; padding: 0.1rem 0.55rem;
+  border-radius: 999px; font-size: 0.78rem; font-weight: 600;
+}
+.trend-good { background: rgba(76, 195, 138, 0.18); color: var(--accent); }
+.trend-bad  { background: rgba(255, 107, 107, 0.18); color: var(--danger); }
+.trend-flat { background: rgba(138, 145, 160, 0.18); color: var(--muted); }
+
+/* Live-metric cards: prominent, slightly emphasized. */
+.live-card { border-color: var(--accent2); box-shadow: 0 0 0 1px var(--accent2); }
+.live-card .charts-row { margin-top: 0.6rem; }
+.inner-card { background: var(--panel2); }
+.inner-card h4 { margin: 0 0 0.4rem; font-size: 0.85rem; color: var(--muted); font-weight: 600; }
+
+/* Readable recent-check-ins table: subtle row separation. */
+.readable-table tbody tr:hover { background: var(--panel2); }
+.readable-table td:first-child { white-space: nowrap; color: var(--muted); }
+
+/* Mobile responsiveness: stack insight cards on narrow screens. */
+@media (max-width: 520px) {
+  .grid { grid-template-columns: 1fr 1fr; }
+  .card .big { font-size: 1.3rem; }
+}
+@media (max-width: 380px) {
+  .grid { grid-template-columns: 1fr; }
+}
