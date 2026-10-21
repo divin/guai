@@ -43,6 +43,20 @@ def test_read_endpoints_respect_range(client):
     assert client.get("/api/heart-rate", params={"to": "2026-09-30"}).json()[0]["bpm"] == 62
 
 
+def test_read_endpoints_cap_keeps_newest_rows(client):
+    for hour in range(5):
+        payload = dict(_payload())
+        payload["collected_at"] = f"2026-09-19T{hour:02d}:00:00Z"
+        payload["heart_rates"] = [{"at": f"2026-09-19T{hour:02d}:00:00Z", "bpm": 60 + hour}]
+        client.post("/api/sync", json=payload, headers=auth())
+
+    rows = client.get("/api/activity", params={"limit": 2}).json()
+    assert [r["event_time"] for r in rows] == ["2026-09-19T03:00:00Z", "2026-09-19T04:00:00Z"]
+
+    hr = client.get("/api/heart-rate", params={"limit": 2}).json()
+    assert [r["bpm"] for r in hr] == [63, 64]  # newest two, still oldest-first
+
+
 def test_read_endpoints_have_no_auth_and_are_ordered(client):
     client.post("/api/sync", json=_payload(), headers=auth())
     second = dict(_payload())

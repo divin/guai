@@ -8,6 +8,8 @@ import {
   trendFor,
   trendClass,
   trendArrow,
+  rowsWithinDays,
+  intradaySeries,
 } from "../static/views/overview.mjs";
 
 test("dailyMax groups activity rows by day and keeps max", () => {
@@ -24,6 +26,57 @@ test("dailyMax groups activity rows by day and keeps max", () => {
 
 test("dailyMax skips absent values", () => {
   assert.deepEqual(dailyMax([{ event_time: "2026-10-19T09:00:00Z", steps: null }]), []);
+});
+
+const NOW = new Date("2026-10-22T15:00:00Z");
+
+test("rowsWithinDays filters by date, not row count", () => {
+  const rows = [
+    { event_time: "2026-10-15T10:00:00Z", steps: 1 }, // 7 days back — outside
+    { event_time: "2026-10-16T10:00:00Z", steps: 2 }, // window start — inside
+    { event_time: "2026-10-22T09:00:00Z", steps: 3 }, // today — inside
+  ];
+  const got = rowsWithinDays(rows, 7, NOW);
+  assert.deepEqual(got.map((r) => r.steps), [2, 3]);
+});
+
+test("rowsWithinDays with days=null returns all rows", () => {
+  const rows = [{ event_time: "2026-01-01T00:00:00Z", steps: 1 }];
+  assert.deepEqual(rowsWithinDays(rows, null, NOW), rows);
+});
+
+test("rowsWithinDays keeps all intraday snapshots of today", () => {
+  const rows = [
+    { event_time: "2026-10-22T08:00:00Z", steps: 10 },
+    { event_time: "2026-10-22T09:00:00Z", steps: 20 },
+    { event_time: "2026-10-22T10:00:00Z", steps: 30 },
+  ];
+  assert.equal(rowsWithinDays(rows, 1, NOW).length, 3);
+});
+
+test("intradaySeries maps snapshots to HH:MM labels and values", () => {
+  const rows = [
+    { event_time: "2026-10-22T08:00:00Z", bpm: 60 },
+    { event_time: "2026-10-22T08:30:00Z", bpm: null },
+    { event_time: "2026-10-22T09:00:00Z", bpm: 72 },
+  ];
+  assert.deepEqual(intradaySeries(rows, "bpm"), [
+    { label: "08:00", value: 60 },
+    { label: "09:00", value: 72 },
+  ]);
+});
+
+test("intradaySeries downsamples to at most 300 points, keeping the last", () => {
+  const rows = [];
+  for (let i = 0; i < 1000; i++) {
+    const hh = String(Math.floor(i / 60)).padStart(2, "0");
+    const mm = String(i % 60).padStart(2, "0");
+    rows.push({ event_time: `2026-10-22T${hh}:${mm}:00Z`, bpm: i });
+  }
+  const got = intradaySeries(rows, "bpm");
+  assert.ok(got.length <= 301);
+  assert.equal(got[0].value, 0);
+  assert.equal(got[got.length - 1].value, 999);
 });
 
 test("dailyStats computes min/avg/max per day", () => {

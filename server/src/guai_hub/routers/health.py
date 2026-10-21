@@ -1,7 +1,9 @@
 """Health data read endpoints (unauthenticated, trusted LAN).
 
 GET /api/activity, /api/sleep, /api/heart-rate — optional UTC ``from``/``to`` range,
-oldest-first ordering (the watch data uploads chronologically).
+oldest-first ordering (the watch data uploads chronologically). The ``limit`` row cap on
+activity/heart-rate keeps the *newest* rows of the requested range (dashboard "today"
+and live views need the most recent samples), still returned oldest-first.
 """
 
 from __future__ import annotations
@@ -21,7 +23,16 @@ def _range(stmt, model, from_: str | None, to: str | None):
         stmt = stmt.where(model.event_time >= from_)
     if to is not None:
         stmt = stmt.where(model.event_time <= to)
-    return stmt.order_by(model.event_time)
+    return stmt
+
+
+async def _recent_first(session: AsyncSession, stmt, model, limit: int):
+    """Newest ``limit`` rows of the statement's range, returned oldest-first."""
+    rows = list(
+        (await session.execute(stmt.order_by(model.event_time.desc()).limit(limit))).scalars().all()
+    )
+    rows.reverse()
+    return rows
 
 
 @router.get("/activity", response_model=list[Activity])
@@ -31,8 +42,9 @@ async def activity_history(
     limit: int = Query(default=10000, ge=1, le=100000),
     session: AsyncSession = Depends(get_db),
 ) -> list[Activity]:
-    stmt = _range(select(Activity), Activity, from_, to).limit(limit)
-    return list((await session.execute(stmt)).scalars().all())
+    return await _recent_first(
+        session, _range(select(Activity), Activity, from_, to), Activity, limit
+    )
 
 
 @router.get("/sleep", response_model=list[Sleep])
@@ -57,5 +69,6 @@ async def heart_rate_history(
     limit: int = Query(default=5000, ge=1, le=100000),
     session: AsyncSession = Depends(get_db),
 ) -> list[HeartRate]:
-    stmt = _range(select(HeartRate), HeartRate, from_, to).limit(limit)
-    return list((await session.execute(stmt)).scalars().all())
+    return await _recent_first(
+        session, _range(select(HeartRate), HeartRate, from_, to), HeartRate, limit
+    )

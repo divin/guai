@@ -41,6 +41,33 @@ export function shortLabel(dateStr) {
   return `${dateStr.slice(5, 7)}/${dateStr.slice(8, 10)}`;
 }
 
+// Filters point-in-time rows (ISO `event_time`) to the last `days` calendar days
+// including today, by UTC date — a row is a snapshot, not a day, so row counts are
+// never used as day counts. `days = null` keeps everything.
+export function rowsWithinDays(rows, days, now = new Date()) {
+  if (days === null) return rows;
+  const from = new Date(now);
+  from.setDate(from.getDate() - (days - 1));
+  const fromStr = from.toISOString().slice(0, 10);
+  return rows.filter((r) => r.event_time.slice(0, 10) >= fromStr);
+}
+
+// Intraday series for one day of snapshots: HH:MM labels + values, skipping missing
+// values; downsamples to at most 300 evenly spaced points (last point always kept).
+export function intradaySeries(rows, valueKey) {
+  const out = [];
+  for (const r of rows) {
+    const v = r[valueKey];
+    if (!Number.isFinite(v)) continue;
+    out.push({ label: r.event_time.slice(11, 16), value: v });
+  }
+  if (out.length <= 300) return out;
+  const stride = Math.ceil(out.length / 300);
+  const kept = out.filter((_, i) => i % stride === 0);
+  if (kept[kept.length - 1] !== out[out.length - 1]) kept.push(out[out.length - 1]);
+  return kept;
+}
+
 // --- trend helpers -------------------------------------------------------------
 
 function daysBefore(count) {
@@ -143,7 +170,7 @@ export const Overview = {
     try {
       activity = await loadRange("/api/activity", 30);
       sleep = await loadRange("/api/sleep", 30);
-      hr = await loadRange("/api/heart-rate", 14);
+      hr = await loadRange("/api/heart-rate", 30);
       responses = await getJSON("/api/checkin-responses");
       pending = await getJSON("/api/checkin-instances", { status: "pending" });
       missed = await getJSON("/api/checkin-instances", { status: "missed" });
@@ -162,7 +189,8 @@ export const Overview = {
 
     const todaySteps = lastAct && lastAct.steps ? lastAct.steps : "—";
     const sleepH = lastSleep && lastSleep.sleep_seconds ? Math.round(lastSleep.sleep_seconds / 360) / 10 : "—";
-    const hrAvg = hr.length ? Math.round(hr.reduce((a, r) => a + r.bpm, 0) / hr.length) : "—";
+    const hr7 = rowsWithinDays(hr, 7);
+    const hrAvg = hr7.length ? Math.round(hr7.reduce((a, r) => a + r.bpm, 0) / hr7.length) : "—";
     const weatherTxt = weather
       ? `${weather.temperature_c}°C ${weather.condition || ""}`
       : weatherError
@@ -170,22 +198,37 @@ export const Overview = {
         : "—";
 
     const stepDaily = dailyMax(activity);
-    const hrStats = dailyStats(hr);
+    const hrStats = dailyStats(hr7);
     const hrTrend = trendFor(hr, "bpm", 7);
     const stepsTrend = trendFor(activity, "steps", 7);
 
-    // Live intraday plot data — grouped by the requested interval.
+    // Live metrics — windowed by UTC date, never by row count (rows are snapshots,
+    // not days). "Today" plots the intraday progression; longer ranges aggregate per day.
     const livePeriod = app.dataset.livePeriod || "today";
-    const liveDays = livePeriod === "today" ? 1 : livePeriod === "7d" ? 7 : 30;
-    const liveActivity = activity.slice(-liveDays);
-    const liveHr = hr.slice(-liveDays);
+    const liveIsToday = livePeriod === "today";
+    const liveDays = liveIsToday ? 1 : livePeriod === "7d" ? 7 : 30;
+    const liveActivity = rowsWithinDays(activity, liveDays);
+    const liveHr = rowsWithinDays(hr, liveDays);
+    const liveTitle = liveIsToday ? "today" : `last ${liveDays} days`;
+    const liveStepsSeries = intradaySeries(liveActivity, "steps");
+    const liveHrSeries = intradaySeries(liveHr, "bpm");
+    const liveStepsChart = liveActivity.length
+      ? liveIsToday
+        ? lineChart({ labels: liveStepsSeries.map((p) => p.label), values: liveStepsSeries.map((p) => p.value), step: true })
+        : lineChart({ labels: dailyMax(liveActivity).map(([d]) => shortLabel(d)), values: dailyMax(liveActivity).map(([, v]) => v) })
+      : "";
+    const liveHrChart = liveHr.length
+      ? liveIsToday
+        ? lineChart({ labels: liveHrSeries.map((p) => p.label), values: liveHrSeries.map((p) => p.value), step: false })
+        : lineChart({ labels: dailyStats(liveHr).days.map(shortLabel), values: dailyStats(liveHr).avg })
+      : "";
 
     app.innerHTML = `
       <h2 class="view-title">Overview</h2>
       <div class="grid">
         ${card("Steps today", todaySteps, "cumulative since midnight", stepsTrend, "steps")}
         ${card("Last night's sleep", `${sleepH}h`, lastSleep ? `restful ${Math.round((lastSleep.restful_seconds || 0) / 360) / 10}h` : "")}
-        ${card("Heart rate (7d avg)", `${hrAvg} bpm`, `${hr.length} samples`, hrTrend, "bpm")}
+        ${card("Heart rate (7d avg)", `${hrAvg} bpm`, `${hr7.length} samples`, hrTrend, "bpm")}
         ${card("Weather now", weatherTxt, weather ? `${weather.humidity_pct}% · ${weather.pressure_hpa} hPa` : "")}
         ${card("Pending check-ins", pending.length, "answers waiting on your watch")}
         ${card("Missed (all time)", missed.length, "expired answer windows")}
@@ -201,8 +244,8 @@ export const Overview = {
           </select>
         </div>
         <div class="charts-row">
-          ${liveActivity.length ? `<div class="card inner-card"><h4>Steps · ${livePeriod}</h4>${lineChart({ labels: dailyMax(liveActivity).map(([d]) => shortLabel(d)), values: dailyMax(liveActivity).map(([, v]) => v) })}</div>` : `<div class="card inner-card"><h4>Steps · ${livePeriod}</h4><div class="empty">No steps data for this period.</div></div>`}
-          ${liveHr.length ? `<div class="card inner-card"><h4>Heart rate · ${livePeriod}</h4>${lineChart({ labels: dailyStats(liveHr).days.map(shortLabel), values: dailyStats(liveHr).avg })}</div>` : `<div class="card inner-card"><h4>Heart rate · ${livePeriod}</h4><div class="empty">No heart-rate data for this period.</div></div>`}
+          ${liveActivity.length ? `<div class="card inner-card"><h4>Steps · ${liveTitle}</h4>${liveStepsChart}</div>` : `<div class="card inner-card"><h4>Steps · ${liveTitle}</h4><div class="empty">No steps data for this period.</div></div>`}
+          ${liveHr.length ? `<div class="card inner-card"><h4>Heart rate · ${liveTitle}</h4>${liveHrChart}</div>` : `<div class="card inner-card"><h4>Heart rate · ${liveTitle}</h4><div class="empty">No heart-rate data for this period.</div></div>`}
         </div>
       </div>
 
