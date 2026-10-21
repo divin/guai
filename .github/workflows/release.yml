@@ -8,6 +8,18 @@ name: release
 on:
   push:
     tags: ["*"]
+  # Manual releases: tag-event quirks (force-moved tags) don't retrigger the
+  # workflow, so a tag can also be dispatched by name. The tag must equal
+  # server/pyproject.toml's version — the publish job verifies that.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (must equal server/pyproject.toml version)"
+        required: true
+        type: string
+
+env:
+  RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
 
 permissions:
   contents: write
@@ -22,6 +34,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
       - uses: astral-sh/setup-uv@v6
       - name: Install Pebble toolchain
         run: |
@@ -50,11 +64,13 @@ jobs:
       IMAGE: ghcr.io/${{ github.repository }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
       - name: Verify tag matches package version
         run: |
           VERSION=$(python3 -c "import tomllib; print(tomllib.load(open('server/pyproject.toml','rb'))['project']['version'])")
-          if [ "$VERSION" != "${{ github.ref_name }}" ]; then
-            echo "tag ${{ github.ref_name }} != package version $VERSION"; exit 1
+          if [ "$VERSION" != "${{ env.RELEASE_TAG }}" ]; then
+            echo "tag ${{ env.RELEASE_TAG }} != package version $VERSION"; exit 1
           fi
       - name: Download .pbw artifacts
         uses: actions/download-artifact@v4
@@ -75,14 +91,24 @@ jobs:
           context: .
           push: true
           tags: |
-            ${{ env.IMAGE }}:${{ github.ref_name }}
+            ${{ env.IMAGE }}:${{ env.RELEASE_TAG }}
             ${{ env.IMAGE }}:${{ github.sha }}
             ${{ env.IMAGE }}:latest
-      - name: Create GitHub release with .pbw assets
+      # Idempotent: re-releases (force-moved tags, retried runs) must not fail on
+      # an existing release — upload-clobber instead of create.
+      - name: Create or update GitHub release with .pbw assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "${{ github.ref_name }}" \
-            pbw/watchface/build/watchface.pbw \
-            pbw/app/build/app.pbw \
-            --generate-notes
+          if gh release view "${{ env.RELEASE_TAG }}" > /dev/null 2>&1; then
+            echo "release ${{ env.RELEASE_TAG }} already exists — replacing assets"
+            gh release upload "${{ env.RELEASE_TAG }}" \
+              pbw/watchface/build/watchface.pbw \
+              pbw/app/build/app.pbw \
+              --clobber
+          else
+            gh release create "${{ env.RELEASE_TAG }}" \
+              pbw/watchface/build/watchface.pbw \
+              pbw/app/build/app.pbw \
+              --generate-notes
+          fi
