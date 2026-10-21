@@ -222,6 +222,15 @@ export const Overview = {
         ? lineChart({ labels: liveHrSeries.map((p) => p.label), values: liveHrSeries.map((p) => p.value), step: false })
         : lineChart({ labels: dailyStats(liveHr).days.map(shortLabel), values: dailyStats(liveHr).avg })
       : "";
+    // Newest available sample (rows are oldest-first) — makes stale watch syncs
+    // visible in the live empty states instead of a bare "no data".
+    const newestSample = [activity.at(-1)?.event_time, hr.at(-1)?.event_time]
+      .filter(Boolean)
+      .sort()
+      .at(-1)
+      ?.replace("T", " ")
+      .replace("Z", " UTC");
+    const staleHint = newestSample ? ` Newest sample: ${newestSample}.` : "";
 
     app.innerHTML = `
       <h2 class="view-title">Overview</h2>
@@ -244,8 +253,8 @@ export const Overview = {
           </select>
         </div>
         <div class="charts-row">
-          ${liveActivity.length ? `<div class="card inner-card"><h4>Steps · ${liveTitle}</h4>${liveStepsChart}</div>` : `<div class="card inner-card"><h4>Steps · ${liveTitle}</h4><div class="empty">No steps data for this period.</div></div>`}
-          ${liveHr.length ? `<div class="card inner-card"><h4>Heart rate · ${liveTitle}</h4>${liveHrChart}</div>` : `<div class="card inner-card"><h4>Heart rate · ${liveTitle}</h4><div class="empty">No heart-rate data for this period.</div></div>`}
+          ${liveActivity.length ? `<div class="card inner-card"><h4>Steps · ${liveTitle}</h4>${liveStepsChart}</div>` : `<div class="card inner-card"><h4>Steps · ${liveTitle}</h4><div class="empty">No steps data for this period.${staleHint}</div></div>`}
+          ${liveHr.length ? `<div class="card inner-card"><h4>Heart rate · ${liveTitle}</h4>${liveHrChart}</div>` : `<div class="card inner-card"><h4>Heart rate · ${liveTitle}</h4><div class="empty">No heart-rate data for this period.${staleHint}</div></div>`}
         </div>
       </div>
 

@@ -43,6 +43,16 @@ def test_read_endpoints_respect_range(client):
     assert client.get("/api/heart-rate", params={"to": "2026-09-30"}).json()[0]["bpm"] == 62
 
 
+def test_read_endpoints_include_the_whole_to_day(client):
+    # `to` is a date-only string; a row later that same UTC day must still be included
+    # ("2026-10-21T09:00:00Z" <= "2026-10-21" is false lexicographically — regression).
+    payload = dict(_payload())
+    client.post("/api/sync", json=payload, headers=auth())  # 2026-09-19T09:00:00Z
+
+    assert len(client.get("/api/activity", params={"from": "2026-09-19", "to": "2026-09-19"}).json()) == 1
+    assert len(client.get("/api/heart-rate", params={"from": "2026-09-19", "to": "2026-09-19"}).json()) == 1
+
+
 def test_read_endpoints_cap_keeps_newest_rows(client):
     for hour in range(5):
         payload = dict(_payload())

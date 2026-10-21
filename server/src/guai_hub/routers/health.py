@@ -9,7 +9,7 @@ and live views need the most recent samples), still returned oldest-first.
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from guai_hub.deps import get_db
@@ -19,10 +19,14 @@ router = APIRouter()
 
 
 def _range(stmt, model, from_: str | None, to: str | None):
+    """UTC event_time window. Date-only bounds (10 chars) are inclusive on the whole
+    day: comparing full ISO timestamps lexicographically would drop the `to` day's
+    rows ("…T09:00:00Z" > "…"), so date-only bounds match on the date prefix."""
+    day = func.substr(model.event_time, 1, 10)
     if from_ is not None:
-        stmt = stmt.where(model.event_time >= from_)
+        stmt = stmt.where(day >= from_ if len(from_) == 10 else model.event_time >= from_)
     if to is not None:
-        stmt = stmt.where(model.event_time <= to)
+        stmt = stmt.where(day <= to if len(to) == 10 else model.event_time <= to)
     return stmt
 
 

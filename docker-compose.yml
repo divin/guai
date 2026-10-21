@@ -19,7 +19,7 @@ services:
   # management APIs (check-in definitions CRUD, CSV export, insights, config).
   # Runs the one-minute tick and owns database migrations.
   guai:
-    image: ${GUAI_IMAGE:-ghcr.io/divin/guai:1.5.0}
+    image: ${GUAI_IMAGE:-ghcr.io/divin/guai:1.5.1}
     container_name: guai
     ports:
       - "8080:8000"
@@ -43,7 +43,7 @@ services:
   # file but runs no scheduler and no migrations (the internal instance owns
   # those) — so the tick and notifications fire exactly once.
   guai-device:
-    image: ${GUAI_IMAGE:-ghcr.io/divin/guai:1.5.0}
+    image: ${GUAI_IMAGE:-ghcr.io/divin/guai:1.5.1}
     container_name: guai-device
     ports:
       - "8081:8000"
