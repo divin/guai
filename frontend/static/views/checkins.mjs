@@ -115,19 +115,19 @@ export const Checkins = {
       <h4>Instances</h4>
       ${
         instances.length
-          ? `<table><thead><tr><th>Scheduled (local)</th><th>Status</th><th>Answered</th><th>Missed</th></tr></thead>
+          ? `<div class="table-scroll"><table><thead><tr><th>Scheduled (local)</th><th>Status</th><th>Answered</th><th>Missed</th></tr></thead>
              <tbody>${instances
                .map((i) => `<tr><td>${i.scheduled_local}</td><td>${statusChip(i.status)}</td><td>${i.answered_at || "—"}</td><td>${i.missed_at || "—"}</td></tr>`)
-               .join("")}</tbody></table>`
+               .join("")}</tbody></table></div>`
           : `<p class="muted">No instances yet.</p>`
       }
       <h4 style="margin-top:0.8rem">Responses</h4>
       ${
         responses.length
-          ? `<table><thead><tr><th>Submitted (UTC)</th><th>Scheduled</th><th>Value</th></tr></thead>
+          ? `<div class="table-scroll"><table><thead><tr><th>Submitted (UTC)</th><th>Scheduled</th><th>Value</th></tr></thead>
              <tbody>${responses
                .map((r) => `<tr><td>${shortDate(r.submitted_at)}</td><td>${r.scheduled_local}</td><td>${escapeHtml(JSON.stringify(r.value))}</td></tr>`)
-               .join("")}</tbody></table>`
+               .join("")}</tbody></table></div>`
           : `<p class="muted">No responses yet.</p>`
       }`;
   },

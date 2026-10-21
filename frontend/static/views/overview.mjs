@@ -217,10 +217,10 @@ export const Overview = {
       }
       ${
         responses.length
-          ? `<div class="card readable-table" style="margin-top:1rem"><h3>Recent check-in answers</h3><table>
+          ? `<div class="card readable-table" style="margin-top:1rem"><h3>Recent check-in answers</h3><div class="table-scroll"><table>
               <thead><tr><th>When</th><th>Question</th><th>Answer</th></tr></thead>
               <tbody>${responses.slice(0, 10).map((r) => `<tr><td>${shortDate(r.submitted_at)}</td><td>${escapeHtml(r.title)}</td><td>${valueText(r.value)}</td></tr>`).join("")}</tbody>
-            </table></div>`
+            </table></div></div>`
           : ""
       }`;
 

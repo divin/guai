@@ -13,7 +13,7 @@ function currentView() {
 }
 
 function setActiveNav(name) {
-  for (const link of document.querySelectorAll(".nav a")) {
+  for (const link of document.querySelectorAll(".nav a, .bottom-nav a")) {
     link.classList.toggle("active", link.dataset.view === name);
   }
 }

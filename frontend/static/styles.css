@@ -84,6 +84,14 @@ label.field { display: block; margin: 0.6rem 0; }
 label.field span.t { display: block; font-size: 0.85rem; color: var(--muted); margin-bottom: 0.2rem; }
 .field-error { color: var(--danger); font-size: 0.82rem; }
 svg text { fill: var(--muted); font-size: 10px; }
+/* Charts scale to their container (the SVG carries a viewBox). */
+svg.chart { width: 100%; height: auto; display: block; }
+
+/* Tables scroll horizontally on small screens instead of stretching the page. */
+.table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.table-scroll table { min-width: 480px; }
+.table-scroll th:first-child,
+.table-scroll td:first-child { position: sticky; left: 0; background: var(--panel); z-index: 1; }
 .charts-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.8rem; }
 @media (max-width: 760px) { .charts-row { grid-template-columns: 1fr; } }
 .breakline { word-break: break-word; }
@@ -118,3 +126,61 @@ svg text { fill: var(--muted); font-size: 10px; }
 @media (max-width: 380px) {
   .grid { grid-template-columns: 1fr; }
 }
+
+/* --- 1.5.0 mobile pass (step 14.6) ------------------------------------------ */
+
+/* Comfortable touch targets for controls. */
+.btn,
+.nav a,
+#theme-toggle,
+input,
+select {
+  min-height: 44px;
+}
+@media (min-width: 761px) {
+  /* Desktop keeps the compact header sizing. */
+  .nav a,
+  #theme-toggle {
+    min-height: 0;
+    padding: 0.3rem 0.7rem;
+  }
+  .btn,
+  input,
+  select {
+    min-height: 0;
+  }
+}
+
+@media (max-width: 760px) {
+  /* The header shrinks to brand + theme toggle; navigation moves to the bottom. */
+  .topbar { padding: 0.6rem 1rem; }
+  .topbar .nav { display: none; }
+
+  .bottom-nav {
+    display: flex;
+    position: fixed;
+    left: 0; right: 0; bottom: 0;
+    z-index: 10;
+    background: var(--panel);
+    border-top: 1px solid var(--border);
+    padding: 0.35rem max(0.5rem, env(safe-area-inset-left)) max(0.35rem, env(safe-area-inset-bottom));
+  }
+  .bottom-nav a {
+    flex: 1;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 0.1rem;
+    color: var(--muted); text-decoration: none;
+    font-size: 0.72rem;
+    padding: 0.45rem 0.25rem;
+    border-radius: 8px;
+  }
+  .bottom-nav a.active, .bottom-nav a:hover { color: var(--accent); background: var(--panel2); }
+  .bottom-nav .bi { font-size: 1.15rem; line-height: 1; }
+
+  /* Keep content clear of the fixed bottom bar. */
+  #app { padding-bottom: 5rem; }
+  .foot { padding-bottom: 5rem; }
+}
+
+/* Bottom nav exists only on small screens. */
+.bottom-nav { display: none; }

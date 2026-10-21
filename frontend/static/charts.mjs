@@ -75,7 +75,7 @@ export function lineChart({ labels, values, width = 340, height = 130, step = tr
     path += `${i === 0 ? "M" : " L"} ${nx} ${ny}`;
   }
   return (
-    `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img">` +
+    `<svg class="chart" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img">` +
     grid + texts +
     `<path d="${path}" fill="none" stroke="var(--accent)" stroke-width="2"/>` +
     `</svg>`
@@ -114,7 +114,7 @@ export function barChart({ labels, values, width = 340, height = 130, color = "v
     if (!labelsOut[i]) continue;
     out += `<text x="${padL + (plotW / n) * i + (plotW / n) / 2}" y="${height - 4}" text-anchor="middle">${escapeXml(labelsOut[i])}</text>`;
   }
-  return `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img">${out}</svg>`;
+  return `<svg class="chart" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img">${out}</svg>`;
 }
 
 // --- band chart (min/avg/max) ----------------------------------------------
@@ -161,7 +161,7 @@ export function bandChart({ labels, min, mid, max, width = 340, height = 130 }) 
     if (!labelsOut[i]) continue;
     out += `<text x="${x(i)}" y="${height - 4}" text-anchor="middle">${escapeXml(labelsOut[i])}</text>`;
   }
-  return `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img">${out}</svg>`;
+  return `<svg class="chart" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img">${out}</svg>`;
 }
 
 // --- scatter chart (with optional linear-regression trend line) ----------------
@@ -195,7 +195,7 @@ export function scatterChart({ points, width = 340, height = 150, xLabel = "", y
   }
   if (xLabel) out += `<text x="${padL + plotW / 2}" y="${height - 4}" text-anchor="middle">${escapeXml(xLabel)}</text>`;
   if (yLabel) out += `<text x="8" y="${padT + plotH / 2}" transform="rotate(-90 8 ${padT + plotH / 2})" text-anchor="middle">${escapeXml(yLabel)}</text>`;
-  return `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img">${out}</svg>`;
+  return `<svg class="chart" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img">${out}</svg>`;
 }
 
 // --- simple linear regression (used by Trends later, tested now) -------------

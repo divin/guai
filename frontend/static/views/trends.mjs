@@ -97,5 +97,5 @@ async function renderDaily(app, daysKey) {
       </tr>`;
     })
     .join("");
-  table.innerHTML = `<table><thead><tr>${header.map((h) => `<th>${h}</th>`).join("")}</tr></thead><tbody>${tbody}</tbody></table>`;
+  table.innerHTML = `<div class="table-scroll"><table><thead><tr>${header.map((h) => `<th>${h}</th>`).join("")}</tr></thead><tbody>${tbody}</tbody></table></div>`;
 }
