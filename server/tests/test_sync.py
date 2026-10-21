@@ -99,6 +99,37 @@ def test_sync_rejects_bad_heart_rate_bounds(client):
     assert client.post("/api/sync", json=payload, headers=auth()).status_code == 422
 
 
+def test_sync_stores_bpm_raw_and_defaults_to_null(client, settings):
+    """Step 14.1: the watchface now uploads bpm_raw alongside bpm; a record without one
+    (older firmware / raw unavailable) still stores fine with a NULL bpm_raw."""
+    resp = client.post(
+        "/api/sync",
+        json={
+            "collected_at": "2026-09-19T18:05:00Z",
+            "device": "pebble-time",
+            "heart_rates": [
+                {"at": "2026-09-19T18:04:00Z", "bpm": 62, "bpm_raw": 64},
+                {"at": "2026-09-19T18:05:00Z", "bpm": 63},
+            ],
+        },
+        headers=auth(),
+    )
+    assert resp.status_code == 200
+    assert _synced_rows(settings, "SELECT bpm, bpm_raw FROM heart_rate ORDER BY event_time") == [
+        (62, 64),
+        (63, None),
+    ]
+
+
+def test_sync_rejects_bad_bpm_raw_bounds(client):
+    payload = {
+        "collected_at": "2026-09-19T18:05:00Z",
+        "device": "pebble-time",
+        "heart_rates": [{"at": "2026-09-19T18:04:00Z", "bpm": 62, "bpm_raw": 999}],
+    }
+    assert client.post("/api/sync", json=payload, headers=auth()).status_code == 422
+
+
 def test_sync_rejects_bad_timestamp(client):
     payload = _payload()
     payload["collected_at"] = "not-a-timestamp"

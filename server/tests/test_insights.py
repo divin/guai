@@ -311,7 +311,7 @@ def test_export_all_kinds_and_escaping(client, settings, migrated_db_path):
         json={
             "collected_at": "2026-09-19T10:00:00Z",
             "activity": {"steps": 8000},
-            "heart_rates": [{"at": "2026-09-19T10:00:00Z", "bpm": 70}],
+            "heart_rates": [{"at": "2026-09-19T10:00:00Z", "bpm": 70, "bpm_raw": 64}],
             "sleep": [{"night_date": "2026-09-18", "sleep_seconds": 25200}],
         },
         headers=auth(),
@@ -358,3 +358,23 @@ def test_export_all_kinds_and_escaping(client, settings, migrated_db_path):
         assert resp.headers["content-disposition"].startswith("attachment")
 
     assert client.get("/api/export.csv", params={"kind": "bogus"}).status_code == 422
+
+
+def test_export_heart_rate_includes_bpm_raw(client, settings, migrated_db_path):
+    """Step 14.1: bpm_raw round-trips from sync into the heart_rate CSV export."""
+    client.post(
+        "/api/sync",
+        json={
+            "collected_at": "2026-09-19T10:00:00Z",
+            "heart_rates": [
+                {"at": "2026-09-19T10:00:00Z", "bpm": 70, "bpm_raw": 64},
+                {"at": "2026-09-19T10:01:00Z", "bpm": 71},
+            ],
+        },
+        headers=auth(),
+    )
+    resp = client.get("/api/export.csv", params={"kind": "heart_rate"})
+    assert resp.status_code == 200
+    rows = list(csv.reader(io.StringIO(resp.text)))
+    assert rows[0] == ["event_time", "bpm", "bpm_raw"]
+    assert [row[1:3] for row in rows[1:]] == [["70", "64"], ["71", ""]]

@@ -112,13 +112,20 @@ function upload() {
 
 // --- C -> JS message handling -------------------------------------------
 
-function enqueueHeartRate(ts, bpm) {
+function enqueueHeartRate(ts, bpm, bpmRaw) {
   if (typeof bpm !== "number" || bpm < 20 || bpm > 250) return;
+  var sample = { at: utcIso(ts), bpm: bpm };
+  // C embeds the raw BPM alongside the filtered one (HR_RAW_BPM) when it could read it.
+  // Same 20–250 guard as the server's CHECK constraint; the field is simply omitted when
+  // missing or out of range so the record stays bpm-only (schema: bpm_raw is nullable).
+  if (typeof bpmRaw === "number" && bpmRaw >= 20 && bpmRaw <= 250) {
+    sample.bpm_raw = bpmRaw;
+  }
   enqueue({
     type: "heart_rate",
     dedupeKey: ts,
     body: {
-      heart_rates: [{ at: utcIso(ts), bpm: bpm }]
+      heart_rates: [sample]
     }
   });
 }
@@ -127,6 +134,7 @@ Pebble.addEventListener("appmessage", function (e) {
   var p = e.payload;
   var ts = p.TIMESTAMP;
   var bpm = p.HR_BPM;
+  var bpmRaw = p.HR_RAW_BPM;
 
   console.log("pkjs: appmessage type=" + p.TYPE);
   if (p.TYPE === "activity") {
@@ -145,10 +153,11 @@ Pebble.addEventListener("appmessage", function (e) {
         }
       }
     });
-    // The native watch includes the current HR in its activity snapshot.
-    enqueueHeartRate(ts, bpm);
+    // The native watch includes the current HR in its activity snapshot (raw BPM when
+    // accessible).
+    enqueueHeartRate(ts, bpm, bpmRaw);
   } else if (p.TYPE === "heart_rate") {
-    enqueueHeartRate(ts, bpm);
+    enqueueHeartRate(ts, bpm, bpmRaw);
   } else if (p.TYPE === "sleep") {
     enqueue({
       type: "sleep",
