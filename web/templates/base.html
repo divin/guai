@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="{{ config.default_language }}">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}{{ config.title }}{% endblock %}</title>
+    <meta name="description" content="{% block description %}{{ config.description }}{% endblock %}">
+    <meta name="theme-color" content="{{ config.extra.bg_color }}">
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="{{ config.title }}">
+    <meta property="og:description" content="{{ config.description }}">
+    <meta property="og:url" content="{{ config.base_url }}">
+    <meta property="og:image" content="{{ get_url(path='images/watchface-dark.png', trailing_slash=false) }}">
+    <meta name="twitter:card" content="summary_large_image">
+    <link rel="canonical" href="{{ config.base_url }}">
+    <link rel="icon" href="{{ get_url(path='favicon.svg') }}">
+    <link rel="stylesheet" href="{{ get_url(path='main.css') }}">
+    <style>
+        :root {
+            --accent-color: {{ config.extra.accent_color }};
+            --text-color: {{ config.extra.text_color }};
+            --bg-color: {{ config.extra.bg_color }};
+            --surface-color: {{ config.extra.surface_color }};
+            --border-color: {{ config.extra.border_color }};
+        }
+    </style>
+</head>
+<body>
+    {% block content %}{% endblock %}
+    <footer>
+        <p>&copy; {{ now() | date(format="%Y") }} {{ config.extra.footer_text | default(value=config.title) }}</p>
+        <nav>
+            {% for link in config.extra.social_links %}
+            <a href="{{ link.url }}">{{ link.name }}</a>
+            {% endfor %}
+        </nav>
+    </footer>
+</body>
+</html>

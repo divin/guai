@@ -37,6 +37,16 @@ static int s_wx_temp_x10 = 0;
 #define SYNC_INTERVAL_MIN 1
 #define SYNC_INTERVAL_MAX 60
 
+#define PERSIST_THEME 1
+#define PERSIST_LOST_MSG 2
+#define PERSIST_BT_DISCONNECTED_AT 3
+#define PERSIST_LOST_ENABLED 4
+#define PERSIST_LOST_TIMEOUT_MIN 5
+
+#define LOST_TIMEOUT_DEFAULT_MIN 60
+#define LOST_TIMEOUT_MIN 1
+#define LOST_TIMEOUT_MAX 1440
+
 // Theme state and palette: 0 = dark (default), 1 = light.
 static int s_theme = 0;
 static GColor s_col_bg;
@@ -74,63 +84,142 @@ static const int WX_RESOURCE_IDS[2][8] = {
 static int s_steps = 0;
 static int s_sleep_min = 0;
 static int s_active_min = 0;
+static bool s_steps_available = false;
+static bool s_sleep_available = false;
+static bool s_active_available = false;
+static bool s_hr_available = false;
+static bool s_hr_initialized = false;
+static int s_hr_bpm = 0;
+#ifdef PBL_HEALTH
+static bool s_health_events_subscribed = false;
+#endif
 static int s_step_goal = STEP_GOAL_DEFAULT;  // user-adjustable via settings
 static int s_sync_interval = SYNC_INTERVAL_DEFAULT;  // minutes between snapshots (settings)
 static int s_minutes_since_sync = 0;
+static char s_lost_buf[80] = "";
+static bool s_lost_enabled = true;
+static int s_lost_timeout_min = LOST_TIMEOUT_DEFAULT_MIN;
+static time_t s_bt_disconnected_at = 0;
+static Layer *s_lost_screen_layer;
+static TextLayer *s_lost_layer;
 
 static void apply_theme(int theme);
 
 // ---------------------------------------------------------------------------
-// Health -> pkjs sync (unchanged protocol, spec/integration.md)
+// Health -> pkjs sync
 
 #ifdef PBL_HEALTH
+typedef enum {
+  HEALTH_READ_UNCHECKED = 0,
+  HEALTH_READ_AVAILABLE,
+  HEALTH_READ_NO_PERMISSION,
+  HEALTH_READ_NOT_SUPPORTED,
+  HEALTH_READ_NO_SAMPLES,
+  HEALTH_READ_UNKNOWN,
+} HealthReadStatus;
+
+#define HEALTH_METRIC_COUNT ((int)HealthMetricHeartRateRawBPM + 1)
+static HealthReadStatus s_health_status[HEALTH_METRIC_COUNT];
+
+static const char *health_status_name(HealthReadStatus status) {
+  switch (status) {
+    case HEALTH_READ_AVAILABLE: return "available";
+    case HEALTH_READ_NO_PERMISSION: return "permission denied";
+    case HEALTH_READ_NOT_SUPPORTED: return "unsupported";
+    case HEALTH_READ_NO_SAMPLES: return "no samples";
+    default: return "unknown";
+  }
+}
+
+static HealthReadStatus health_metric_status(HealthMetric metric, time_t start, time_t end) {
+  HealthServiceAccessibilityMask mask = health_service_metric_accessible(metric, start, end);
+  HealthReadStatus status;
+  if (mask & HealthServiceAccessibilityMaskAvailable) status = HEALTH_READ_AVAILABLE;
+  else if (mask & HealthServiceAccessibilityMaskNoPermission) status = HEALTH_READ_NO_PERMISSION;
+  else if (mask & HealthServiceAccessibilityMaskNotSupported) status = HEALTH_READ_NOT_SUPPORTED;
+  else if (mask & HealthServiceAccessibilityMaskNotAvailable) status = HEALTH_READ_NO_SAMPLES;
+  else status = HEALTH_READ_UNKNOWN;
+
+  int index = (int)metric;
+  if (index >= 0 && index < HEALTH_METRIC_COUNT && s_health_status[index] != status) {
+    s_health_status[index] = status;
+    APP_LOG(APP_LOG_LEVEL_DEBUG, "Health metric %d: %s", index, health_status_name(status));
+  }
+  return status;
+}
+
+static bool health_metric_sum(HealthMetric metric, time_t start, time_t end,
+                              HealthValue *value_out) {
+  if (health_metric_status(metric, start, end) != HEALTH_READ_AVAILABLE) return false;
+  *value_out = health_service_sum(metric, start, end);
+  return true;
+}
+
+static bool health_current_value(HealthMetric metric, HealthValue *value_out) {
+  time_t now = time(NULL);
+  if (health_metric_status(metric, now, now) != HEALTH_READ_AVAILABLE) return false;
+  HealthValue value = health_service_peek_current_value(metric);
+  if (value <= 0) return false;
+  *value_out = value;
+  return true;
+}
+
 static void send_health(void) {
-  DictionaryIterator *iter;
-  AppMessageResult res = app_message_outbox_begin(&iter);
-  if (res != APP_MSG_OK) return;
+  const HealthMetric metrics[] = {
+    HealthMetricStepCount,
+    HealthMetricWalkedDistanceMeters,
+    HealthMetricActiveSeconds,
+    HealthMetricRestingKCalories,
+    HealthMetricActiveKCalories,
+  };
+  HealthValue values[sizeof(metrics) / sizeof(metrics[0])];
+  bool available[sizeof(metrics) / sizeof(metrics[0])];
+  bool has_activity = false;
+  time_t start = time_start_of_today();
+  time_t now = time(NULL);
 
-  const int32_t now = (int32_t)time(NULL);
-  dict_write_cstring(iter, MESSAGE_KEY_TYPE, "activity");
-  dict_write_int32(iter, MESSAGE_KEY_TIMESTAMP, now);
-  dict_write_int32(iter, MESSAGE_KEY_STEPS,
-                    (int32_t)health_service_sum_today(HealthMetricStepCount));
-  dict_write_int32(iter, MESSAGE_KEY_DISTANCE_METERS,
-                    (int32_t)(health_service_sum_today(HealthMetricWalkedDistanceMeters) * 10));
-  dict_write_int32(iter, MESSAGE_KEY_ACTIVE_SECONDS,
-                    (int32_t)health_service_sum_today(HealthMetricActiveSeconds));
-  dict_write_int32(iter, MESSAGE_KEY_RESTING_KCAL,
-                    (int32_t)(health_service_sum_today(HealthMetricRestingKCalories) * 10));
-  dict_write_int32(iter, MESSAGE_KEY_ACTIVE_KCAL,
-                    (int32_t)(health_service_sum_today(HealthMetricActiveKCalories) * 10));
-
-  time_t now_t = time(NULL);
-  HealthServiceAccessibilityMask mask =
-      health_service_metric_accessible(HealthMetricHeartRateBPM, now_t, now_t);
-  if (mask & HealthServiceAccessibilityMaskAvailable) {
-    dict_write_int32(iter, MESSAGE_KEY_HR_BPM,
-                     (int32_t)health_service_peek_current_value(HealthMetricHeartRateBPM));
-    dict_write_int32(iter, MESSAGE_KEY_HR_RAW_BPM,
-                     (int32_t)health_service_peek_current_value(HealthMetricHeartRateRawBPM));
+  for (int i = 0; i < (int)(sizeof(metrics) / sizeof(metrics[0])); i++) {
+    available[i] = health_metric_sum(metrics[i], start, now, &values[i]);
+    has_activity = has_activity || available[i];
   }
 
+  HealthValue hr = 0;
+  HealthValue hr_raw = 0;
+  bool has_hr = health_current_value(HealthMetricHeartRateBPM, &hr);
+  bool has_raw_hr = health_current_value(HealthMetricHeartRateRawBPM, &hr_raw);
+  if (!has_activity && !has_hr) return;
+
+  DictionaryIterator *iter;
+  if (app_message_outbox_begin(&iter) != APP_MSG_OK) return;
+  dict_write_cstring(iter, MESSAGE_KEY_TYPE, "activity");
+  dict_write_int32(iter, MESSAGE_KEY_TIMESTAMP, (int32_t)now);
+  if (available[0]) dict_write_int32(iter, MESSAGE_KEY_STEPS, (int32_t)values[0]);
+  if (available[1]) dict_write_int32(iter, MESSAGE_KEY_DISTANCE_METERS, (int32_t)(values[1] * 10));
+  if (available[2]) dict_write_int32(iter, MESSAGE_KEY_ACTIVE_SECONDS, (int32_t)values[2]);
+  if (available[3]) dict_write_int32(iter, MESSAGE_KEY_RESTING_KCAL, (int32_t)(values[3] * 10));
+  if (available[4]) dict_write_int32(iter, MESSAGE_KEY_ACTIVE_KCAL, (int32_t)(values[4] * 10));
+  if (has_hr) dict_write_int32(iter, MESSAGE_KEY_HR_BPM, (int32_t)hr);
+  if (has_hr && has_raw_hr) dict_write_int32(iter, MESSAGE_KEY_HR_RAW_BPM, (int32_t)hr_raw);
   app_message_outbox_send();
 }
 
 static void send_sleep(void) {
   time_t night_start = time_start_of_today() - (24 * SECONDS_PER_HOUR);
   time_t today_start = time_start_of_today();
-  HealthValue sleep_secs =
-      health_service_sum(HealthMetricSleepSeconds, night_start, today_start);
-  HealthValue restful_secs =
-      health_service_sum(HealthMetricSleepRestfulSeconds, night_start, today_start);
+  HealthValue sleep_secs = 0;
+  HealthValue restful_secs = 0;
+  bool has_sleep = health_metric_sum(HealthMetricSleepSeconds, night_start, today_start,
+                                     &sleep_secs);
+  bool has_restful = health_metric_sum(HealthMetricSleepRestfulSeconds, night_start, today_start,
+                                       &restful_secs);
+  if (!has_sleep && !has_restful) return;
 
   DictionaryIterator *iter;
-  AppMessageResult res = app_message_outbox_begin(&iter);
-  if (res != APP_MSG_OK) return;
+  if (app_message_outbox_begin(&iter) != APP_MSG_OK) return;
   dict_write_cstring(iter, MESSAGE_KEY_TYPE, "sleep");
   dict_write_int32(iter, MESSAGE_KEY_TIMESTAMP, (int32_t)night_start);
-  dict_write_int32(iter, MESSAGE_KEY_SLEEP_SECONDS, (int32_t)sleep_secs);
-  dict_write_int32(iter, MESSAGE_KEY_SLEEP_RESTFUL_SECONDS, (int32_t)restful_secs);
+  if (has_sleep) dict_write_int32(iter, MESSAGE_KEY_SLEEP_SECONDS, (int32_t)sleep_secs);
+  if (has_restful) dict_write_int32(iter, MESSAGE_KEY_SLEEP_RESTFUL_SECONDS, (int32_t)restful_secs);
   app_message_outbox_send();
 }
 
@@ -162,38 +251,89 @@ static void bar_layer_update_proc(Layer *layer, GContext *ctx) {
   GRect bounds = layer_get_bounds(layer);
   graphics_context_set_fill_color(ctx, s_col_track);
   graphics_fill_rect(ctx, bounds, 0, GCornerNone);
-  graphics_context_set_fill_color(ctx, s_col_accent);
-  int w = bounds.size.w * (s_steps > s_step_goal ? s_step_goal : s_steps) / s_step_goal;
-  if (w > 0) graphics_fill_rect(ctx, GRect(0, 0, w, bounds.size.h), 0, GCornerNone);
+  if (s_steps_available) {
+    graphics_context_set_fill_color(ctx, s_col_accent);
+    int w = bounds.size.w * (s_steps > s_step_goal ? s_step_goal : s_steps) / s_step_goal;
+    if (w > 0) graphics_fill_rect(ctx, GRect(0, 0, w, bounds.size.h), 0, GCornerNone);
+  }
 }
 
 // ---------------------------------------------------------------------------
 // UI updates
 
-static void update_stats(void) {
+static bool update_movement_stats(void) {
+  bool changed = false;
 #ifdef PBL_HEALTH
-  s_steps = (int)health_service_sum_today(HealthMetricStepCount);
-  time_t night_start = time_start_of_today() - (24 * SECONDS_PER_HOUR);
-  HealthValue sleep_secs = health_service_sum(HealthMetricSleepSeconds, night_start, time_start_of_today());
-  s_sleep_min = (int)(sleep_secs / 60);
-  s_active_min = (int)(health_service_sum_today(HealthMetricActiveSeconds) / 60);
+  time_t start = time_start_of_today();
+  time_t now = time(NULL);
+  HealthValue value = 0;
+  bool available = health_metric_sum(HealthMetricStepCount, start, now, &value);
+  int next = available ? (int)value : 0;
+  if (s_steps_available != available || s_steps != next) {
+    s_steps_available = available;
+    s_steps = next;
+    changed = true;
+  }
+
+  value = 0;
+  available = health_metric_sum(HealthMetricActiveSeconds, start, now, &value);
+  next = available ? (int)(value / 60) : 0;
+  if (s_active_available != available || s_active_min != next) {
+    s_active_available = available;
+    s_active_min = next;
+    changed = true;
+  }
+#else
+  if (s_steps_available || s_active_available) changed = true;
+  s_steps_available = false;
+  s_active_available = false;
 #endif
+  return changed;
 }
 
-static void update_hr(void) {
+static bool update_sleep_stats(void) {
+  bool changed = false;
 #ifdef PBL_HEALTH
-  time_t now = time(NULL);
-  HealthServiceAccessibilityMask mask =
-      health_service_metric_accessible(HealthMetricHeartRateBPM, now, now);
-  if (mask & HealthServiceAccessibilityMaskAvailable) {
-    HealthValue hr = health_service_peek_current_value(HealthMetricHeartRateBPM);
-    static char buf[16];
-    snprintf(buf, sizeof(buf), "%d", (int)hr);
-    text_layer_set_text(s_hr_layer, buf);
-  } else {
-    text_layer_set_text(s_hr_layer, "--");
+  time_t night_start = time_start_of_today() - (24 * SECONDS_PER_HOUR);
+  time_t today_start = time_start_of_today();
+  HealthValue sleep_secs = 0;
+  bool available = health_metric_sum(HealthMetricSleepSeconds, night_start, today_start,
+                                     &sleep_secs);
+  int next = available ? (int)(sleep_secs / 60) : 0;
+  if (s_sleep_available != available || s_sleep_min != next) {
+    s_sleep_available = available;
+    s_sleep_min = next;
+    changed = true;
   }
+#else
+  if (s_sleep_available) changed = true;
+  s_sleep_available = false;
 #endif
+  return changed;
+}
+
+static bool update_stats(void) {
+  bool changed = update_movement_stats();
+  changed |= update_sleep_stats();
+  return changed;
+}
+
+static bool update_hr(void) {
+  bool available = false;
+  HealthValue value = 0;
+#ifdef PBL_HEALTH
+  available = health_current_value(HealthMetricHeartRateBPM, &value);
+#endif
+  int next = available ? (int)value : 0;
+  if (s_hr_initialized && s_hr_available == available && s_hr_bpm == next) return false;
+  s_hr_initialized = true;
+  s_hr_available = available;
+  s_hr_bpm = next;
+  static char buf[16];
+  if (available) snprintf(buf, sizeof(buf), "%d", next);
+  else snprintf(buf, sizeof(buf), "--");
+  text_layer_set_text(s_hr_layer, buf);
+  return true;
 }
 
 // Weather slot values: temperature rounding from the x10 wire format.
@@ -236,17 +376,17 @@ static void update_panel(void) {
         break;
       case 1:
         icon = s_img_metric[s_theme][1];
-        num = buf_sleep;
+        num = s_sleep_available ? buf_sleep : "--";
         label = "SLEEP";
         break;
       case 2:
         icon = s_img_metric[s_theme][2];
-        num = buf_active;
+        num = s_active_available ? buf_active : "--";
         label = "ACTIVE";
         break;
       default:
         icon = s_img_metric[s_theme][0];
-        num = buf_steps;
+        num = s_steps_available ? buf_steps : "--";
         label = "STEPS";
         break;
     }
@@ -271,11 +411,29 @@ static void update_time(void) {
 
 #ifdef PBL_HEALTH
 static void health_handler(HealthEventType event, void *context) {
-  // display only — snapshots are gated by s_sync_interval in the tick handler;
-  // sending here would defeat the upload interval (HR/step events fire often)
-  update_hr();
-  update_stats();
-  update_panel();
+  // Event callbacks refresh the display only; uploads stay gated by the sync interval.
+  bool changed = false;
+  switch (event) {
+    case HealthEventSignificantUpdate:
+      changed = update_stats();
+      changed |= update_hr();
+      break;
+    case HealthEventMovementUpdate:
+      changed = update_movement_stats();
+      break;
+    case HealthEventSleepUpdate:
+      changed = update_sleep_stats();
+      break;
+    case HealthEventHeartRateUpdate:
+      update_hr();
+      return;
+    default:
+      return;
+  }
+  if (changed) {
+    update_panel();
+    layer_mark_dirty(s_bar_layer);
+  }
 }
 #endif
 
@@ -294,12 +452,18 @@ static void battery_handler(BatteryChargeState state) {
   text_layer_set_text(s_batt_text_layer, buf);
 }
 
+static void check_lost_message(void);
+
 static void tick_handler(struct tm *tick_time, TimeUnits units_changed) {
   update_time();
   if (units_changed & MINUTE_UNIT) {
-    update_stats();
-    update_hr();
-    update_panel();
+    bool health_changed = update_stats();
+    health_changed |= update_hr();
+    if (health_changed) {
+      update_panel();
+      layer_mark_dirty(s_bar_layer);
+    }
+    check_lost_message();
 #ifdef PBL_HEALTH
     // Snapshots/uploads run every s_sync_interval minutes (settings); the
     // display keeps updating every minute.
@@ -365,6 +529,26 @@ static void inbox_received(DictionaryIterator *iter, void *context) {
                       : (i > SYNC_INTERVAL_MAX) ? SYNC_INTERVAL_MAX : i;
   }
 
+  // lost-watch message from the settings page
+  Tuple *lost = dict_find(iter, MESSAGE_KEY_LOST_MESSAGE);
+  if (lost) {
+    snprintf(s_lost_buf, sizeof(s_lost_buf), "%s", lost->value->cstring);
+    persist_write_string(PERSIST_LOST_MSG, s_lost_buf);
+  }
+  Tuple *lost_enabled = dict_find(iter, MESSAGE_KEY_LOST_ENABLED);
+  if (lost_enabled) {
+    s_lost_enabled = lost_enabled->value->int32 != 0;
+    persist_write_int(PERSIST_LOST_ENABLED, s_lost_enabled ? 1 : 0);
+  }
+  Tuple *lost_timeout = dict_find(iter, MESSAGE_KEY_LOST_TIMEOUT_MIN);
+  if (lost_timeout) {
+    int minutes = (int)lost_timeout->value->int32;
+    s_lost_timeout_min = (minutes < LOST_TIMEOUT_MIN) ? LOST_TIMEOUT_MIN
+                         : (minutes > LOST_TIMEOUT_MAX) ? LOST_TIMEOUT_MAX : minutes;
+    persist_write_int(PERSIST_LOST_TIMEOUT_MIN, s_lost_timeout_min);
+  }
+  if (lost || lost_enabled || lost_timeout) check_lost_message();
+
   // daily step goal from the settings page (drives the progress bar)
   Tuple *goal = dict_find(iter, MESSAGE_KEY_STEP_GOAL);
   if (goal) {
@@ -388,6 +572,19 @@ static TextLayer *text_layer_new(GRect frame, const char *font, GColor color, GT
   text_layer_set_font(layer, fonts_get_system_font(font));
   text_layer_set_text_alignment(layer, align);
   return layer;
+}
+
+static void bt_handler(bool connected) {
+  if (!connected) {
+    if (s_bt_disconnected_at == 0) {
+      s_bt_disconnected_at = time(NULL);
+      persist_write_int(PERSIST_BT_DISCONNECTED_AT, (int32_t)s_bt_disconnected_at);
+    }
+  } else {
+    s_bt_disconnected_at = 0;
+    persist_write_int(PERSIST_BT_DISCONNECTED_AT, 0);
+  }
+  check_lost_message();
 }
 
 static void apply_colors(int theme) {
@@ -421,13 +618,50 @@ static void apply_theme_to_layers(void) {
     text_layer_set_text_color(s_stat_num[i], s_col_fg);
     text_layer_set_text_color(s_stat_lbl[i], s_col_muted);
   }
+  if (s_lost_layer) text_layer_set_text_color(s_lost_layer, s_theme == 1 ? GColorBlack : GColorWhite);
+  if (s_lost_screen_layer) layer_mark_dirty(s_lost_screen_layer);
   layer_mark_dirty(s_bar_layer);
   layer_mark_dirty(s_panel_layer);
+}
+
+static void set_lost_screen_visible(bool visible) {
+  if (s_lost_screen_layer) layer_set_hidden(s_lost_screen_layer, !visible);
+  if (s_lost_layer) layer_set_hidden(text_layer_get_layer(s_lost_layer), !visible);
+}
+
+static void lost_screen_update_proc(Layer *layer, GContext *ctx) {
+  graphics_context_set_fill_color(ctx, s_col_bg);
+  graphics_fill_rect(ctx, layer_get_bounds(layer), 0, GCornerNone);
+}
+
+static void check_lost_message(void) {
+  if (!s_lost_enabled || s_lost_buf[0] == '\0') {
+    set_lost_screen_visible(false);
+    return;
+  }
+  bool connected = connection_service_peek_pebble_app_connection();
+  if (connected) {
+    s_bt_disconnected_at = 0;
+    persist_write_int(PERSIST_BT_DISCONNECTED_AT, 0);
+    set_lost_screen_visible(false);
+    return;
+  }
+  if (s_bt_disconnected_at == 0) {
+    s_bt_disconnected_at = time(NULL);
+    persist_write_int(PERSIST_BT_DISCONNECTED_AT, (int32_t)s_bt_disconnected_at);
+  }
+  if ((time(NULL) - s_bt_disconnected_at) > (time_t)s_lost_timeout_min * 60) {
+    if (s_lost_layer) text_layer_set_text(s_lost_layer, s_lost_buf);
+    set_lost_screen_visible(true);
+  } else {
+    set_lost_screen_visible(false);
+  }
 }
 
 // Full theme switch: colors + icon set swap (also re-renders the panel and battery).
 static void apply_theme(int theme) {
   s_theme = (theme == 1) ? 1 : 0;
+  persist_write_int(PERSIST_THEME, s_theme);
   apply_colors(s_theme);
   apply_theme_to_layers();
   gbitmap_destroy(s_img_hr);
@@ -443,6 +677,7 @@ static void apply_theme(int theme) {
 }
 
 static void main_window_load(Window *window) {
+  s_hr_initialized = false;
   Layer *root = window_get_root_layer(window);
   GRect bounds = layer_get_bounds(root);
   const int W = bounds.size.w;
@@ -517,6 +752,21 @@ static void main_window_load(Window *window) {
     layer_add_child(s_panel_layer, text_layer_get_layer(s_stat_lbl[i]));
   }
 
+  // Opaque full-screen layer blanks the dashboard while the lost-watch alert is active.
+  s_lost_screen_layer = layer_create(bounds);
+  layer_set_update_proc(s_lost_screen_layer, lost_screen_update_proc);
+  layer_set_hidden(s_lost_screen_layer, true);
+  layer_add_child(root, s_lost_screen_layer);
+
+  // Keep the message legible and prominent on the otherwise blank screen.
+  s_lost_layer = text_layer_new(GRect(8, 20, bounds.size.w - 16, bounds.size.h - 40),
+                                FONT_KEY_GOTHIC_24_BOLD,
+                                s_theme == 1 ? GColorBlack : GColorWhite,
+                                GTextAlignmentCenter);
+  text_layer_set_overflow_mode(s_lost_layer, GTextOverflowModeWordWrap);
+  layer_set_hidden(text_layer_get_layer(s_lost_layer), true);
+  layer_add_child(root, text_layer_get_layer(s_lost_layer));
+
   apply_theme_to_layers();
   update_time();
   update_stats();
@@ -531,6 +781,8 @@ static void main_window_unload(Window *window) {
   fonts_unload_custom_font(s_time_font);
   text_layer_destroy(s_hr_layer);
   text_layer_destroy(s_bpm_unit_layer);
+  text_layer_destroy(s_lost_layer);
+  layer_destroy(s_lost_screen_layer);
   layer_destroy(s_bar_layer);
   layer_destroy(s_panel_layer);
   if (s_img_wx) {
@@ -557,8 +809,25 @@ static void main_window_unload(Window *window) {
 }
 
 static void init(void) {
+  // Restore persisted settings so the theme survives reloads when pkjs does not resend it.
+  if (persist_exists(PERSIST_THEME)) s_theme = persist_read_int(PERSIST_THEME);
+  if (persist_exists(PERSIST_LOST_MSG)) {
+    persist_read_string(PERSIST_LOST_MSG, s_lost_buf, sizeof(s_lost_buf));
+  }
+  if (persist_exists(PERSIST_LOST_ENABLED)) {
+    s_lost_enabled = persist_read_int(PERSIST_LOST_ENABLED) != 0;
+  }
+  if (persist_exists(PERSIST_LOST_TIMEOUT_MIN)) {
+    int minutes = persist_read_int(PERSIST_LOST_TIMEOUT_MIN);
+    s_lost_timeout_min = (minutes < LOST_TIMEOUT_MIN) ? LOST_TIMEOUT_MIN
+                         : (minutes > LOST_TIMEOUT_MAX) ? LOST_TIMEOUT_MAX : minutes;
+  }
+  if (persist_exists(PERSIST_BT_DISCONNECTED_AT)) {
+    s_bt_disconnected_at = (time_t)persist_read_int(PERSIST_BT_DISCONNECTED_AT);
+  }
+
   s_window = window_create();
-  window_set_background_color(s_window, GColorBlack);
+  window_set_background_color(s_window, s_theme == 1 ? GColorWhite : GColorBlack);
   window_set_window_handlers(s_window, (WindowHandlers){
     .load = main_window_load,
     .unload = main_window_unload
@@ -567,10 +836,25 @@ static void init(void) {
 
   tick_timer_service_subscribe(MINUTE_UNIT | DAY_UNIT, tick_handler);
   battery_state_service_subscribe(battery_handler);
-  battery_handler(battery_state_service_peek());  // set icon + % immediately at launch
+  battery_handler(battery_state_service_peek());
+
+  // Track Bluetooth connection for the lost-watch message.
+  if (connection_service_peek_pebble_app_connection()) {
+    s_bt_disconnected_at = 0;
+    persist_write_int(PERSIST_BT_DISCONNECTED_AT, 0);
+  } else if (s_bt_disconnected_at == 0) {
+    s_bt_disconnected_at = time(NULL);
+    persist_write_int(PERSIST_BT_DISCONNECTED_AT, (int32_t)s_bt_disconnected_at);
+  }
+  connection_service_subscribe((ConnectionHandlers){ .pebble_app_connection_handler = bt_handler });
+  check_lost_message();
 
 #ifdef PBL_HEALTH
-  health_service_events_subscribe(health_handler, NULL);
+  s_health_events_subscribed = health_service_events_subscribe(health_handler, NULL);
+  if (!s_health_events_subscribed) {
+    APP_LOG(APP_LOG_LEVEL_WARNING,
+            "Health event subscription failed; minute-tick updates remain active");
+  }
 #endif
 
   const int inbound_size = 256;
@@ -585,8 +869,12 @@ static void init(void) {
 }
 
 static void deinit(void) {
+  connection_service_unsubscribe();
 #ifdef PBL_HEALTH
-  health_service_events_unsubscribe();
+  if (s_health_events_subscribed) {
+    health_service_events_unsubscribe();
+    s_health_events_subscribed = false;
+  }
   send_health();  // final cumulative snapshot before exit
 #endif
   tick_timer_service_unsubscribe();

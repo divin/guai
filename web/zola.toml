@@ -1,0 +1,31 @@
+# GitHub Pages project-site URL for divin/guai.
+base_url = "https://divin.github.io/guai/"
+
+title = "GUAI — your health, understood"
+description = "A private, self-hosted health tracker for Pebble watches."
+author = "Divin Gavran"
+default_language = "en"
+compile_sass = true
+build_search_index = false
+generate_sitemap = true
+
+[markdown]
+
+[markdown.highlighting]
+theme = "catppuccin-mocha"
+
+[extra]
+accent_color = "#36b79f"
+text_color = "#f2f4f7"
+bg_color = "#0b0d12"
+surface_color = "#151922"
+border_color = "#2c333d"
+footer_text = "GUAI · Gather · Understand · Anticipate · Insights"
+
+[[extra.social_links]]
+name = "GitHub"
+url = "https://github.com/divin/guai"
+
+[[extra.social_links]]
+name = "Releases"
+url = "https://github.com/divin/guai/releases/latest"

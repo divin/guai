@@ -1,7 +1,7 @@
 {
   "name": "guai",
   "author": "Divin Gavran",
-  "version": "1.5.2",
+  "version": "1.6.0",
   "keywords": ["pebble-app"],
   "private": true,
   "dependencies": {},
@@ -10,7 +10,7 @@
     "uuid": "d2637251-644a-4bdb-88fa-41df52f2a444",
     "sdkVersion": "3",
     "enableMultiJS": true,
-    "capabilities": ["configurable"],
+    "capabilities": ["configurable", "health"],
     "targetPlatforms": [
       "emery"
     ],
@@ -39,7 +39,10 @@
       "PANEL_SLOT_C",
       "UI_THEME",
       "STEP_GOAL",
-      "SYNC_INTERVAL"
+      "SYNC_INTERVAL",
+      "LOST_MESSAGE",
+      "LOST_ENABLED",
+      "LOST_TIMEOUT_MIN"
     ],
     "resources": {
       "media": [

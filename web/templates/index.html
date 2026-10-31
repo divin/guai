@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block title %}{{ section.title | default(value=config.title) }}{% endblock %}
+{% block description %}{{ section.extra.tagline | default(value=config.description) }}{% endblock %}
+
+{% block content %}
+<main>
+    <section class="hero">
+        {% if section.extra.image %}
+        <img src="{{ get_url(path=section.extra.image) }}" alt="{{ section.extra.image_alt | default(value='') }}" class="hero-image">
+        {% endif %}
+        <div class="hero-text">
+            <h1>{{ section.title | default(value=config.title) }}</h1>
+            <p class="tagline">{{ section.extra.tagline }}</p>
+            <div class="cta-row">
+                {% if section.extra.cta_text %}
+                <a href="{{ section.extra.cta_url }}" class="btn btn-primary">{{ section.extra.cta_text }}</a>
+                {% endif %}
+                {% if section.extra.secondary_text %}
+                <a href="{{ section.extra.secondary_url }}" class="btn btn-secondary">{{ section.extra.secondary_text }}</a>
+                {% endif %}
+            </div>
+        </div>
+    </section>
+
+    {% if section.extra.features %}
+    <section class="features" id="features" aria-label="GUAI features">
+        {% for feature in section.extra.features %}
+        <div class="feature-card">
+            <span class="feature-icon">{{ feature.icon }}</span>
+            <h2>{{ feature.title }}</h2>
+            <p>{{ feature.description }}</p>
+        </div>
+        {% endfor %}
+    </section>
+    {% endif %}
+
+    {% if section.extra.screenshots %}
+    <section class="screenshots" id="screenshots" aria-labelledby="screenshots-title">
+        <h2 id="screenshots-title">See GUAI in action</h2>
+        <div class="screenshot-grid">
+            {% for screenshot in section.extra.screenshots %}
+            <figure class="screenshot-card">
+                <a href="{{ get_url(path=screenshot.image) }}" target="_blank" rel="noopener noreferrer" aria-label="Open {{ screenshot.caption | default(value='screenshot') }} in a new tab">
+                    <img src="{{ get_url(path=screenshot.image) }}" alt="{{ screenshot.alt | default(value='') }}" loading="lazy" decoding="async">
+                </a>
+                {% if screenshot.caption %}<figcaption>{{ screenshot.caption }}</figcaption>{% endif %}
+            </figure>
+            {% endfor %}
+        </div>
+    </section>
+    {% endif %}
+
+    <section class="content">
+        {{ section.content | safe }}
+    </section>
+</main>
+{% endblock %}

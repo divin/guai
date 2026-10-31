@@ -363,10 +363,13 @@ static void adjust(int delta) {
     s_selection += delta;
     if (s_selection < s_scale_min) s_selection = s_scale_min;
     if (s_selection > s_scale_max) s_selection = s_scale_max;
-  } else {
-    s_selection += delta;
-    if (s_selection < 0) s_selection = s_option_count - 1;
-    if (s_selection >= s_option_count) s_selection = 0;
+  } else if (strcmp(s_answer_type, "single_choice") == 0) {
+    // Option order follows the on-screen list: UP moves toward the first option,
+    // DOWN toward the last. Clamp at the ends instead of wrapping to the opposite end.
+    if (s_option_count < 1) return;
+    s_selection -= delta;
+    if (s_selection < 0) s_selection = 0;
+    if (s_selection >= s_option_count) s_selection = s_option_count - 1;
   }
   render();
 }

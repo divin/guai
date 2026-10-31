@@ -46,6 +46,10 @@ jobs:
         run: zola --root frontend check --skip-external-links
       - name: Zola build
         run: zola --root frontend build
+      - name: Project page check
+        run: zola --root web check --skip-external-links
+      - name: Project page build
+        run: zola --root web build
       - name: Node tests
         working-directory: frontend
         run: node --test

@@ -17,6 +17,9 @@ var SLOTS_KEY = "GUAI_SLOTS";
 var THEME_KEY = "GUAI_THEME";
 var GOAL_KEY = "GUAI_GOAL";
 var INTERVAL_KEY = "GUAI_INTERVAL";
+var LOST_KEY = "GUAI_LOST";
+var LOST_ENABLED_KEY = "GUAI_LOST_ENABLED";
+var LOST_TIMEOUT_KEY = "GUAI_LOST_TIMEOUT_MIN";
 
 var DEVICE_NAME = "pebble";
 
@@ -138,23 +141,25 @@ Pebble.addEventListener("appmessage", function (e) {
 
   console.log("pkjs: appmessage type=" + p.TYPE);
   if (p.TYPE === "activity") {
-    enqueue({
-      type: "activity",
-      dedupeKey: ts,
-      body: {
-        collected_at: utcIso(ts),
-        device: DEVICE_NAME,
-        activity: {
-          steps: p.STEPS,
-          distance_meters: p.DISTANCE_METERS / 10,
-          active_seconds: p.ACTIVE_SECONDS,
-          resting_kcal: p.RESTING_KCAL / 10,
-          active_kcal: p.ACTIVE_KCAL / 10
+    var activity = {};
+    if (typeof p.STEPS === "number") activity.steps = p.STEPS;
+    if (typeof p.DISTANCE_METERS === "number") activity.distance_meters = p.DISTANCE_METERS / 10;
+    if (typeof p.ACTIVE_SECONDS === "number") activity.active_seconds = p.ACTIVE_SECONDS;
+    if (typeof p.RESTING_KCAL === "number") activity.resting_kcal = p.RESTING_KCAL / 10;
+    if (typeof p.ACTIVE_KCAL === "number") activity.active_kcal = p.ACTIVE_KCAL / 10;
+    if (Object.keys(activity).length > 0) {
+      enqueue({
+        type: "activity",
+        dedupeKey: ts,
+        body: {
+          collected_at: utcIso(ts),
+          device: DEVICE_NAME,
+          activity: activity
         }
-      }
-    });
-    // The native watch includes the current HR in its activity snapshot (raw BPM when
-    // accessible).
+      });
+    }
+    // The native watch includes filtered HR when accessible, and raw BPM only when
+    // that separate metric is accessible too.
     enqueueHeartRate(ts, bpm, bpmRaw);
   } else if (p.TYPE === "heart_rate") {
     enqueueHeartRate(ts, bpm, bpmRaw);
@@ -251,6 +256,38 @@ function sendGoal(goal) {
   });
 }
 
+function readLost() {
+  var s = localStorage.getItem(LOST_KEY);
+  return (s === null || s === undefined) ? "" : String(s).trim();
+}
+
+function sendLost(text) {
+  Pebble.sendAppMessage({ LOST_MESSAGE: text }, function () {}, function () {
+    console.log("pkjs: lost message send failed");
+  });
+}
+
+function readLostEnabled() {
+  return localStorage.getItem(LOST_ENABLED_KEY) !== "0";
+}
+
+function readLostTimeout() {
+  var minutes = parseInt(localStorage.getItem(LOST_TIMEOUT_KEY) || "60", 10);
+  if (isNaN(minutes)) return 60;
+  if (minutes < 1) return 1;
+  if (minutes > 1440) return 1440;
+  return minutes;
+}
+
+function sendLostOptions(enabled, timeoutMinutes) {
+  Pebble.sendAppMessage({
+    LOST_ENABLED: enabled ? 1 : 0,
+    LOST_TIMEOUT_MIN: timeoutMinutes
+  }, function () {}, function () {
+    console.log("pkjs: lost-watch options send failed");
+  });
+}
+
 // --- Weather for the watchface row (server data only) -----------------------
 
 var WX_CODES = {
@@ -295,6 +332,8 @@ Pebble.addEventListener("ready", function () {
   sendSlots(readSlots());
   sendGoal(readGoal());
   sendInterval(readInterval());
+  sendLost(readLost());
+  sendLostOptions(readLostEnabled(), readLostTimeout());
   upload();
   requestSleepOnce();
   pollWeather();
@@ -353,10 +392,13 @@ function configHtml(name) {
       '<label>Theme</label><div class="chiprow">' + chips("theme", [0,1], ["Dark","Light"], readTheme()) + '</div>' +
       '<label>Step goal (steps/day)<br><input id="goal" type="number" min="1000" max="100000" step="500" value="' + readGoal() + '"></label><br><br>' +
       '<label>Upload interval (minutes)<br><input id="interval" type="number" min="1" max="60" step="1" value="' + readInterval() + '"></label><br><br>' +
+      '<label>Lost-watch alert</label><div class="chiprow">' + chips("lostEnabled", [1,0], ["Enabled","Disabled"], readLostEnabled() ? 1 : 0) + '</div>' +
+      '<label>Disconnected time before alert (minutes, 1–1440)<br><input id="lostTimeout" type="number" min="1" max="1440" step="1" value="' + readLostTimeout() + '"></label><br><br>' +
+      '<label>Lost-watch message<br><input id="lost" value="' + htmlEscape(readLost()) + '" maxlength="79"></label><br><br>' +
       '<button type="submit">Save</button></form>' +
       '<script>' +
-      'var state={slot0:' + slots[0] + ',slot1:' + slots[1] + ',slot2:' + slots[2] + ',theme:' + readTheme() + '};' +
-      '["slot0","slot1","slot2","theme"].forEach(function(id){' +
+      'var state={slot0:' + slots[0] + ',slot1:' + slots[1] + ',slot2:' + slots[2] + ',theme:' + readTheme() + ',lostEnabled:' + (readLostEnabled() ? 1 : 0) + '};' +
+      '["slot0","slot1","slot2","theme","lostEnabled"].forEach(function(id){' +
       'var bs=document.getElementById(id).getElementsByTagName("button");' +
       'for(var i=0;i<bs.length;i++){bs[i].onclick=function(){' +
       'for(var j=0;j<bs.length;j++)bs[j].className="chip";' +
@@ -367,7 +409,10 @@ function configHtml(name) {
       'slots:[state.slot0,state.slot1,state.slot2],' +
       'theme:state.theme,' +
       'goal:parseInt(document.getElementById("goal").value,10),' +
-      'interval:parseInt(document.getElementById("interval").value,10)};location.href=' +
+      'interval:parseInt(document.getElementById("interval").value,10),' +
+      'lost:document.getElementById("lost").value,' +
+      'lostEnabled:state.lostEnabled,' +
+      'lostTimeout:parseInt(document.getElementById("lostTimeout").value,10)};location.href=' +
       '"pebblejs://close#"+encodeURIComponent(JSON.stringify(opts))};' +
       'setTimeout(send,100);return false;};<\/script></body></html>'
     );
@@ -405,6 +450,26 @@ Pebble.addEventListener("webviewclosed", function (e) {
       localStorage.setItem(INTERVAL_KEY, String(interval));
       sendInterval(interval);
     }
+    if (opts.lost !== undefined) {
+      var lostText = String(opts.lost).trim();
+      localStorage.setItem(LOST_KEY, lostText);
+      sendLost(lostText);
+    }
+    var lostOptionsChanged = false;
+    if (opts.lostEnabled !== undefined) {
+      var lostEnabled = parseInt(opts.lostEnabled, 10) !== 0;
+      localStorage.setItem(LOST_ENABLED_KEY, lostEnabled ? "1" : "0");
+      lostOptionsChanged = true;
+    }
+    if (opts.lostTimeout !== undefined) {
+      var lostTimeout = parseInt(opts.lostTimeout, 10);
+      if (isNaN(lostTimeout)) lostTimeout = 60;
+      if (lostTimeout < 1) lostTimeout = 1;
+      if (lostTimeout > 1440) lostTimeout = 1440;
+      localStorage.setItem(LOST_TIMEOUT_KEY, String(lostTimeout));
+      lostOptionsChanged = true;
+    }
+    if (lostOptionsChanged) sendLostOptions(readLostEnabled(), readLostTimeout());
     upload();
     pollWeather();
   }

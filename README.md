@@ -23,10 +23,14 @@ flowchart LR
 
 The **watchface** reads Pebble's Health API each minute, sends snapshots to its JS layer, and uploads them (`POST /api/sync`, bearer token) with offline buffering and idempotent upserts. The **server** runs a one-minute tick in your timezone that materialises due check-in instances, marks missed ones after their answer window, and fires a *generic* Pushover ping. The **check-in app** pulls pending questions one at a time — toggle, stepper, or option list — and submits the answer straight from the watch. The **dashboard** (Zola + vanilla JS, hand-rolled SVG charts) aggregates everything per local day, computes statistics, and plots correlations.
 
-The watchface's bottom panel is fully user-configurable — each of the three slots can show **steps**, **sleep**, **active minutes**, or **live weather** (server data only, `--` when unavailable) — with a light/dark theme, an adjustable daily step goal, and an adjustable upload interval (minutes) for battery tuning, all from the settings gear. The
-**check-in app** uses the same visual language: mockup-faithful screens per answer type
-(YES/NO tiles, a big value with a segmented scale bar, scrolling option rows), a `N OF M`
-progress counter, a light/dark theme of its own, and a confirm step before every submission:
+## ✨ Features
+
+- **Health-tracking watchface:** Passively collects steps, sleep, and heart rate, and syncs health data to your own server. Weather is shown when server data is available. After the phone receives a watch snapshot, it saves the upload in phone-side storage and retries if the server or network is unavailable; snapshots are not durably buffered on the watch while it is disconnected from the phone.
+- **Customizable watchface:** Choose what each of the three stats-panel slots shows (steps, sleep, active minutes, or weather), select a light or dark theme, set a daily step goal, and tune the upload interval.
+- **Lost-watch contact alert:** Enable or disable the alert, set a disconnect delay from **1 to 1,440 minutes** (60 by default), and write a custom contact message. Once triggered, it blanks the dashboard and displays only the message; reconnecting to the phone clears it. The alert settings and disconnect timer persist across watchface reloads. Message text is white in dark theme and black in light theme.
+- **Wrist-based check-ins:** Answer scheduled `boolean`, `scale`, and single-choice questions directly on the watch. Navigate choices with UP/DOWN, review the answer, then confirm before submitting.
+- **Self-hosted dashboard:** Review health summaries, live data, charts, check-in history, and daily trends; manage check-ins and weather location; and export your data as CSV.
+- **Private by design:** Health and check-in data stays in your SQLite database on your server. The watch buffers uploads offline, and only the weather provider (Open-Meteo) and optional Pushover receive outbound requests.
 
 <p align="center">
   <img src="assets/watchface-dark.png" width="200" alt="GUAI watchface, dark theme (default)">
@@ -81,7 +85,7 @@ GUAI is installed with the current official app (Core Devices **"Pebble"** / **"
 
 > **Compatibility:** GUAI's Pebble apps are built for and only tested on the **Pebble Time 2 (emery platform)**. They may install on other platforms, but health metrics, layout, and sync behavior are only verified there — no other hardware is supported.
 
-Both apps ask once for a **Server URL** and the **token** from your `.env`. At home that is the **device instance** (e.g. `http://192.168.1.10:8081`); away from home, expose `guai-device` via an HTTPS reverse proxy and point the apps at that URL — the internal instance stays on your LAN. To (re)configure, tap the **⚙️ settings** icon next to the app in the Pebble mobile app and save the same fields. From then on the watchface snapshots and uploads every minute (adjustable in the settings, 1–60 minutes) while displayed and buffers offline data; the check-in app polls on open.
+Both apps ask once for a **Server URL** and the **token** from your `.env`. At home that is the **device instance** (e.g. `http://192.168.1.10:8081`); away from home, expose `guai-device` via an HTTPS reverse proxy and point the apps at that URL — the internal instance stays on your LAN. To (re)configure, tap the **⚙️ settings** icon next to the app in the Pebble mobile app and save the same fields. The watchface settings also include the lost-watch alert toggle, disconnect timeout, and contact message. From then on the watchface snapshots and uploads every minute (adjustable in the settings, 1–60 minutes) while displayed and buffers offline data; the check-in app polls on open.
 
 A check-in is worth defining when you want to remember something repeatedly: `Did you take your medication?` (boolean, daily 09:00 + 21:00), `How is your energy today?` (scale 1–10), `Headache?` (`No headache / Mild / Severe`). Each definition has an answer window (default 60 min — after that the instance is recorded as *missed*, which is itself data) and an optional single reminder ping.
 
@@ -90,6 +94,17 @@ A check-in is worth defining when you want to remember something repeatedly: `Di
 The dashboard is fully **mobile-friendly**: on narrow screens navigation moves to a fixed bottom bar, tables scroll horizontally with a sticky first column, and every chart scales to the full width of its card.
 
 **Overview** shows today's steps, last night's sleep, a 7-day heart-rate average, current weather, and pending/missed check-in counts. The metric cards carry **trend badges** that compare the last 7 days against the previous 7 — green when the change is an improvement (fewer beats per minute counts as one), red when it isn't, and neutral when there isn't enough data on both sides. Below the cards, a **Live** section plots today's steps and heart rate at the watchface's sample granularity, with a selector to widen the window to the last 7 or 30 days. A last-30-days row (steps line, sleep bars, HR band) and a recent-answers table round it out. **Check-ins** lists definitions with pending/answered/missed counts, a full editor (question, answer type, schedule, window, reminder), and per-definition history with status chips. **Trends** has a period-selectable daily table (steps, sleep, restful %, HR, temperature, precipitation, check-in counters). **Settings** stores the weather location (searched via Open-Meteo geocoding), links CSV downloads of every table (including the raw-vs-filtered `bpm_raw` heart-rate column), and points back to this repository. The theme choice is stored locally in the browser.
+
+### Dashboard screenshots
+
+<p align="center">
+  <img src="assets/dashboard-overview.jpg" width="49%" alt="GUAI dashboard overview with health summary cards, charts, and recent check-in answers">
+  <img src="assets/dashboard-check-ins.jpg" width="49%" alt="GUAI dashboard check-ins page with scheduled questions and their answer status">
+</p>
+<p align="center">
+  <img src="assets/dashboard-trends.jpg" width="49%" alt="GUAI dashboard trends page with daily health and check-in data">
+  <img src="assets/dashboard-settings.jpg" width="49%" alt="GUAI dashboard settings page with weather location and CSV export controls">
+</p>
 
 ## 💾 Data and privacy
 
@@ -109,9 +124,10 @@ just run            # Build the site and start the server on port 8000 (.local-d
 just watch-emulate  # Watchface in the Pebble Time 2 (emery) emulator
 just app-emulate    # Check-In app in the Pebble Time 2 (emery) emulator
 just watch-smoke    # Emulator-free server-side sync test
+just web-serve      # One-page project website at http://127.0.0.1:1111
 ```
 
-`just run` stores its database in the ignored `server/.local-data/` directory.
+`just run` stores its database in the ignored `server/.local-data/` directory. The one-page project website lives in `web/`; `just web-check` validates it and `just web-build` generates `web/public/`. When files under `web/` change on `main`, `.github/workflows/deploy-web.yml` builds and deploys it to [GitHub Pages](https://divin.github.io/guai/). Enable **Settings → Pages → Source → GitHub Actions** once in the repository settings.
 
 ## 📜 Naming
 

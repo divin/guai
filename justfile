@@ -19,8 +19,8 @@ lint:
 isort:
     cd server && uv run ruff check --select I --fix .
 
-# Non-mutating checks for the backend and Zola site.
-check: frontend-check
+# Non-mutating checks for the backend and both Zola sites.
+check: frontend-check web-check
     cd server && uv run ruff format --check .
     cd server && uv run ruff check .
 
@@ -32,9 +32,21 @@ test: frontend-build
 frontend-check:
     zola --root frontend check --skip-external-links
 
-# Build the static site (output: frontend/public).
+# Build the dashboard site (output: frontend/public).
 frontend-build:
     zola --root frontend build
+
+# Validate the one-page project website.
+web-check:
+    zola --root web check --skip-external-links
+
+# Build the project website (output: web/public).
+web-build:
+    zola --root web build
+
+# Serve the project website locally on http://127.0.0.1:1111.
+web-serve:
+    cd web && zola serve
 
 # Run dependency-free frontend tests.
 frontend-test: frontend-build
@@ -87,9 +99,12 @@ watch-config-html:
 watch-smoke:
     bash scripts/watch-smoke.sh
 
-# Push synthetic health data into the emery emulator (steps/HR/sleep).
+# Push synthetic main health metrics into the emery emulator.
 watch-simulate:
     pebble emu-steps --emulator emery 8500
+    pebble emu-distance --emulator emery 5600
+    pebble emu-active-time --emulator emery 45
+    pebble emu-calories --emulator emery 320 --resting 1500
     pebble emu-heart-rate --emulator emery 68
     pebble emu-sleep --emulator emery 420 --restful 300
 
