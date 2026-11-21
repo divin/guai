@@ -24,6 +24,13 @@ def test_healthz_503_when_database_down(settings):
         assert resp.json() == {"status": "error"}
 
 
+def test_api_documentation_endpoints_are_disabled(settings):
+    app = create_app(settings)
+    with TestClient(app) as client:
+        for path in ("/docs", "/redoc", "/openapi.json"):
+            assert client.get(path).status_code == 404
+
+
 def test_root_is_served(settings):
     app = create_app(settings)
     with TestClient(app) as client:

@@ -55,7 +55,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 await jobs.shutdown()
             await db.dispose()
 
-    app = FastAPI(title="GUAI", lifespan=lifespan)
+    app = FastAPI(
+        title="GUAI",
+        lifespan=lifespan,
+        docs_url=None,
+        redoc_url=None,
+        openapi_url=None,
+    )
     app.state.settings = settings
     app.state.db = db
 
