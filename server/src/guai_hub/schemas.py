@@ -210,3 +210,23 @@ def _validated_times(times: list[str]) -> list[str]:
         except ValueError as exc:  # pragma: no cover - defensive
             raise ValueError(f"times entries must be HH:MM, got {t!r}") from exc
     return result
+
+
+# --- Forecasts ---------------------------------------------------------------
+
+
+class ForecastMetricState(BaseModel):
+    """One forecastable metric with the user's selection state."""
+
+    metric: str  # e.g. "steps", "checkin:<definition_id>"
+    label: str
+    kind: str  # "regression" or "classification"
+    selected: bool
+
+
+class ForecastMetricsResponse(BaseModel):
+    metrics: list[ForecastMetricState]
+
+
+class ForecastMetricsInput(BaseModel):
+    metrics: list[str]

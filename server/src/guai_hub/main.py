@@ -22,6 +22,7 @@ from guai_hub.migrations import run_migrations
 from guai_hub.routers import checkins as checkins_routes
 from guai_hub.routers import config as config_routes
 from guai_hub.routers import device as device_routes
+from guai_hub.routers import forecasts as forecasts_routes
 from guai_hub.routers import health as health_routes
 from guai_hub.routers import insights as insights_routes
 from guai_hub.routers import weather as weather_routes
@@ -92,6 +93,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.include_router(health_routes.router, prefix="/api")
         app.include_router(insights_routes.router, prefix="/api")
         app.include_router(checkins_routes.router, prefix="/api")
+        app.include_router(forecasts_routes.router, prefix="/api")
 
     # Zola static site — internal/full instances only; mounted last so /healthz
     # and /api routes win. The exposed device instance serves no frontend.
