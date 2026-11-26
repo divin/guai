@@ -4,8 +4,15 @@ import { Overview } from "./views/overview.mjs";
 import { Checkins } from "./views/checkins.mjs";
 import { Trends } from "./views/trends.mjs";
 import { Settings } from "./views/settings.mjs";
+import { Forecasts } from "./views/forecasts.mjs";
 
-const views = { overview: Overview, checkins: Checkins, trends: Trends, settings: Settings };
+const views = {
+  overview: Overview,
+  checkins: Checkins,
+  trends: Trends,
+  forecasts: Forecasts,
+  settings: Settings,
+};
 
 function currentView() {
   const hash = location.hash.replace(/^#\/?/, "").split("?")[0].split("/")[0];

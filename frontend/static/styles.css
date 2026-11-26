@@ -184,3 +184,12 @@ select {
 
 /* Bottom nav exists only on small screens. */
 .bottom-nav { display: none; }
+/* Forecasts view */
+.forecast-value { font-size: 1.6rem; font-weight: 700; margin: 0.2rem 0; }
+.chip.reliable { background: rgba(76, 195, 138, 0.18); color: var(--accent); }
+.chip.unreliable { background: rgba(255, 184, 77, 0.18); color: var(--warn, #ffb84d); }
+.prob-row { display: flex; align-items: center; gap: 0.5rem; margin: 0.3rem 0; }
+.prob-label { min-width: 6.5rem; font-size: 0.85rem; }
+.prob-track { flex: 1; height: 0.55rem; background: var(--panel2); border-radius: 4px; overflow: hidden; }
+.prob-fill { display: block; height: 100%; background: var(--accent); border-radius: 4px; }
+.prob-pct { min-width: 3rem; text-align: right; font-size: 0.85rem; color: var(--muted); }

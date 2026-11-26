@@ -222,6 +222,7 @@ class ForecastMetricState(BaseModel):
     label: str
     kind: str  # "regression" or "classification"
     selected: bool
+    classes: list[str] | None = None  # class labels for probability bars
 
 
 class ForecastMetricsResponse(BaseModel):

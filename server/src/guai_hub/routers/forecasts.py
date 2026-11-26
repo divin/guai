@@ -36,6 +36,7 @@ def _to_state(entries: list[MetricEntry], selected: set[str]) -> list[ForecastMe
             label=e.label,
             kind=e.kind,
             selected=e.spec.metric in selected,
+            classes=e.classes,
         )
         for e in entries
     ]

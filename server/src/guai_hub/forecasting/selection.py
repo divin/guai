@@ -33,6 +33,7 @@ from guai_hub.forecasting.features import (
 from guai_hub.models import CheckinDefinition, ForecastResult, KeyValueSetting
 
 FORECAST_METRICS_KEY = "forecast_metrics"
+BOOLEAN_CLASSES = ["No", "Yes"]
 
 
 @dataclass(frozen=True)
@@ -42,6 +43,7 @@ class MetricEntry:
     spec: MetricSpec
     label: str  # definition title for check-ins, human name for sensors
     kind: str  # "regression" or "classification"
+    classes: list[str] | None = None  # class labels for probability bars; None = point value
 
 
 def build_registry(definitions: list[CheckinDefinition]) -> list[MetricEntry]:
@@ -54,8 +56,21 @@ def build_registry(definitions: list[CheckinDefinition]) -> list[MetricEntry]:
     for definition in definitions:
         if not definition.active:
             continue
-        kind = "regression" if definition.answer_type == "scale" else "classification"
-        entries.append(MetricEntry(checkin_spec(definition.id), definition.title, kind))
+        if definition.answer_type == "scale":
+            entries.append(MetricEntry(checkin_spec(definition.id), definition.title, "regression"))
+        elif definition.answer_type == "single_choice":
+            options = json.loads(definition.options) if definition.options else []
+            entries.append(
+                MetricEntry(
+                    checkin_spec(definition.id), definition.title, "classification", options
+                )
+            )
+        else:
+            entries.append(
+                MetricEntry(
+                    checkin_spec(definition.id), definition.title, "classification", BOOLEAN_CLASSES
+                )
+            )
     return entries
 
 

@@ -55,7 +55,13 @@ def test_registry_covers_sensors_and_active_checkins_only():
 
 def test_registry_kinds_match_answer_types():
     """boolean/single_choice -> classification; scale and sensors -> regression."""
-    entries = build_registry([definition("bool-1", "boolean"), definition("scale-1", "scale")])
+    entries = build_registry(
+        [
+            definition("bool-1", "boolean"),
+            definition("scale-1", "scale"),
+            definition("choice-1", "single_choice"),
+        ]
+    )
     kinds = {e.spec.metric: e.kind for e in entries}
     assert kinds["checkin:bool-1"] == "classification"
     assert kinds["checkin:scale-1"] == "regression"
@@ -64,14 +70,20 @@ def test_registry_kinds_match_answer_types():
     labels = {e.spec.metric: e.label for e in entries}
     assert labels["checkin:bool-1"] == "Q-bool-1"
     assert labels["checkin:scale-1"] == "Q-scale-1"
+    # class labels for probability display: boolean -> No/Yes, choice -> options
+    classes = {e.spec.metric: e.classes for e in entries}
+    assert classes["checkin:bool-1"] == ["No", "Yes"]
+    assert classes["checkin:choice-1"] == ["Good", "Neutral", "Bad"]
+    assert classes["steps"] is None
 
 
 def test_checkin_scale_spec_is_regression_shaped():
     """Scale check-ins forecast as regression: same lag/dow features as sensors."""
     entries = build_registry([definition("scale-1", "scale")])
-    spec = next(e.spec for e in entries if e.spec.metric == "checkin:scale-1")
-    assert isinstance(spec, MetricSpec)
-    assert spec.features == ("target_lag1", "dow")
+    entry = next(e for e in entries if e.spec.metric == "checkin:scale-1")
+    assert isinstance(entry.spec, MetricSpec)
+    assert entry.spec.features == ("target_lag1", "dow")
+    assert entry.classes is None, "scale forecasts are point values, not class bars"
 
 
 def test_unset_selection_defaults_to_all(migrated_db_path):
