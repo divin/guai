@@ -162,3 +162,36 @@ class CheckinResponse(SQLModel, table=True):
             name="ck_resp_exactly_one",
         ),
     )
+
+
+# --- schema v2: forecasts ----------------------------------------------------
+
+
+class ForecastResult(SQLModel, table=True):
+    """One stored forecast from the nightly job, served read-only by the API.
+
+    Natural key ``(metric, target_date, horizon)``: re-running the job for a
+    day upserts in place, so the table always holds the latest forecast per
+    metric/day/horizon. ``value`` carries regression point forecasts;
+    classification forecasts (check-ins) carry ``probabilities`` instead — a
+    JSON object mapping class index to probability.
+    """
+
+    __tablename__ = "forecast_results"
+
+    metric: str = Field(primary_key=True)  # e.g. "steps", "resting_bpm", "checkin:<definition_id>"
+    target_date: str = Field(primary_key=True)  # local date being forecast, YYYY-MM-DD
+    horizon: int = Field(
+        sa_column=Column(
+            Integer,
+            CheckConstraint("horizon BETWEEN 1 AND 3", name="ck_fc_horizon"),
+            primary_key=True,
+        )
+    )
+    model: str  # winning model name from the backtest
+    value: float | None = None  # regression point forecast; None for classification
+    probabilities: str | None = None  # JSON {"<class index>": probability}
+    reliable: bool  # backtest gate: the shipped model beat the baseline suite
+    backtest_score: float | None = None  # winner's walk-forward score (MAE / logloss)
+    baseline_score: float | None = None  # best baseline score on the same eval rows
+    computed_at: str  # ISO-8601 UTC

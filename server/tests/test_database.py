@@ -18,6 +18,7 @@ EXPECTED_TABLES = {
     "checkin_definitions",
     "checkin_instances",
     "checkin_responses",
+    "forecast_results",
 }
 
 SCHEDULE = '{"repeat": "daily", "times": ["09:00"]}'
