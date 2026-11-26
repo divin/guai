@@ -230,3 +230,22 @@ class ForecastMetricsResponse(BaseModel):
 
 class ForecastMetricsInput(BaseModel):
     metrics: list[str]
+
+
+class ForecastRow(BaseModel):
+    """One stored forecast from the nightly job."""
+
+    metric: str
+    target_date: str
+    horizon: int
+    model: str
+    value: float | None = None
+    probabilities: str | None = None
+    reliable: bool
+    backtest_score: float | None = None
+    baseline_score: float | None = None
+    computed_at: str
+
+
+class ForecastResponse(BaseModel):
+    forecasts: list[ForecastRow]

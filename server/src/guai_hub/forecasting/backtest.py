@@ -8,6 +8,7 @@ are never apples-to-oranges (the EDA spike's bug, fixed by construction).
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 
 from guai_hub.forecasting.models.base import (
@@ -16,6 +17,8 @@ from guai_hub.forecasting.models.base import (
 )
 
 _LOGLOSS_CLAMP = 1e-3  # keep logloss finite when a prior hits 0 or 1
+
+logger = logging.getLogger(__name__)
 
 
 def walk_forward_regression(
@@ -49,22 +52,33 @@ def walk_forward_classification(
     warmup: int,
 ) -> dict[str, dict[str, float | int | None]]:
     """Log loss and accuracy per model over the shared eval rows ``X[warmup:]``."""
-    probabilities: dict[str, list[float]] = {name: [] for name in factories}
+    """Log loss and accuracy per model over the shared eval rows ``X[warmup:]``.
+
+    Multi-class: ``y`` holds class indices and a model's probability rows must
+    cover them. A candidate that raises at any fold (e.g. an FM whose training
+    data lacks a class) is dropped entirely — the remaining candidates keep
+    their shared eval rows (fail-soft per candidate).
+    """
+    probability_rows: dict[str, list[list[float]]] = {name: [] for name in factories}
     for i in range(warmup, len(y)):
-        for name, factory in factories.items():
-            model = factory()
-            model.fit(X[:i], y[:i])
-            proba = model.predict_proba(X[i : i + 1])
-            probabilities[name].append(proba[0][1])  # P(class 1)
+        for name, factory in list(factories.items()):
+            try:
+                model = factory()
+                model.fit(X[:i], y[:i])
+                proba = model.predict_proba(X[i : i + 1])[0]
+                probability_rows[name].append(proba)
+            except Exception:  # noqa: BLE001 - a broken candidate must not sink the rest
+                probability_rows.pop(name, None)
+                factories.pop(name, None)
 
     scores: dict[str, dict[str, float | int | None]] = {}
-    for name, probs in probabilities.items():
-        actuals = y[warmup:]
-        losses = [
-            -(a * _log(clamp(p)) + (1 - a) * _log(clamp(1 - p)))
-            for p, a in zip(probs, actuals, strict=True)
+    for name, probas in probability_rows.items():
+        actuals = y[warmup : warmup + len(probas)]
+        losses = [-_log(clamp(row[int(a)])) for row, a in zip(probas, actuals, strict=True)]
+        correct = [
+            max(range(len(row)), key=lambda k: row[k]) == int(a)
+            for row, a in zip(probas, actuals, strict=True)
         ]
-        correct = [(p > 0.5) == (a == 1.0) for p, a in zip(probs, actuals, strict=True)]
         scores[name] = {
             "logloss": sum(losses) / len(losses) if losses else None,
             "accuracy": sum(correct) / len(correct) if correct else None,

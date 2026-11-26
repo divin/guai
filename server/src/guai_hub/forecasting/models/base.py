@@ -63,19 +63,27 @@ class ExpandingPriorClassifier:
     In a walk-forward backtest the training set grows one day at a time, so
     this is exactly the "expanding base rate" — the honest trivial competitor
     for check-in forecasts (EDA: it beat an FM that peeked at features).
+    Multi-class capable: single-choice check-ins get one column per option.
     """
 
     name = "expanding_prior"
 
-    def __init__(self) -> None:
+    def __init__(self, n_classes: int = 2) -> None:
+        if n_classes < 2:
+            raise ValueError("n_classes must be >= 2")
+        self.n_classes = n_classes
         self._proba: list[float] | None = None
 
     def fit(self, features: list[list[float]], targets: list[int]) -> None:
         if not targets:
             raise ValueError("no training targets")
-        n = len(targets)
-        p1 = sum(targets) / n
-        self._proba = [1.0 - p1, p1]
+        counts = [0] * self.n_classes
+        for target in targets:
+            index = int(target)
+            if not 0 <= index < self.n_classes:
+                raise ValueError(f"target {index} outside 0..{self.n_classes - 1}")
+            counts[index] += 1
+        self._proba = [count / len(targets) for count in counts]
 
     def predict_proba(self, features: list[list[float]]) -> list[list[float]]:
         if self._proba is None:
@@ -96,10 +104,10 @@ def new_regressor(name: str, column_index: int) -> RegressionForecaster:
     raise ValueError(f"unknown regressor {name!r}")
 
 
-def new_classifier(name: str) -> ClassificationForecaster:
+def new_classifier(name: str, n_classes: int = 2) -> ClassificationForecaster:
     """Factory for classification models: baseline prior plus the Inpriora FM."""
     if name == "expanding_prior":
-        return ExpandingPriorClassifier()
+        return ExpandingPriorClassifier(n_classes=n_classes)
     if name == "inpriora_classifier":
         from guai_hub.forecasting.models.inpriora_model import InprioraClassifierModel
 

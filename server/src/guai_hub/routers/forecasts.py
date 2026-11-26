@@ -17,11 +17,13 @@ from guai_hub.forecasting.selection import (
     resolve_selection,
     set_selected_metrics,
 )
-from guai_hub.models import CheckinDefinition
+from guai_hub.models import CheckinDefinition, ForecastResult
 from guai_hub.schemas import (
     ForecastMetricsInput,
     ForecastMetricsResponse,
     ForecastMetricState,
+    ForecastResponse,
+    ForecastRow,
 )
 
 router = APIRouter()
@@ -62,3 +64,40 @@ async def put_forecast_metrics(
     resolved = await resolve_selection(db, registry)
     selected = {e.spec.metric for e in resolved}
     return ForecastMetricsResponse(metrics=_to_state(registry, selected))
+
+
+@router.get("/forecasts", response_model=ForecastResponse)
+async def forecasts(request: Request) -> ForecastResponse:
+    """Serve the stored nightly forecasts; fitting never happens here."""
+    db = request.app.state.db
+    async with db.session_factory() as session:
+        rows = list(
+            (
+                await session.execute(
+                    select(ForecastResult).order_by(
+                        ForecastResult.metric,
+                        ForecastResult.target_date,
+                        ForecastResult.horizon,
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+    return ForecastResponse(
+        forecasts=[
+            ForecastRow(
+                metric=r.metric,
+                target_date=r.target_date,
+                horizon=r.horizon,
+                model=r.model,
+                value=r.value,
+                probabilities=r.probabilities,
+                reliable=r.reliable,
+                backtest_score=r.backtest_score,
+                baseline_score=r.baseline_score,
+                computed_at=r.computed_at,
+            )
+            for r in rows
+        ]
+    )

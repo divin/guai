@@ -55,6 +55,9 @@ class Settings(BaseSettings):
     )
     pushover_token: str | None = Field(default=None, validation_alias="PUSHOVER_TOKEN")
     pushover_user: str | None = Field(default=None, validation_alias="PUSHOVER_USER")
+    # Local hour the nightly forecast job runs at (default 06:00: sleep lands in
+    # the morning, so waiting for it keeps lag features clean — see PLAN.md).
+    forecast_hour: int = Field(default=6, ge=0, le=23, validation_alias="GUAI_FORECAST_HOUR")
 
     # --- Validation ---------------------------------------------------
     @field_validator("tz")
