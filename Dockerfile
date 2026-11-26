@@ -35,9 +35,14 @@ ENV GUAI_STATIC_DIR=/app/static \
 WORKDIR /app
 
 # Locked, deterministic install: export pinned requirements from uv.lock.
+# GUAI_FORECAST=1 adds the forecasting extra (Inpriora + CPU torch, ~1 GB);
+# without it the server runs normally and forecasts with baselines only.
+ARG GUAI_FORECAST=0
 COPY server/ ./server/
 RUN cd /app/server \
-    && uv export --frozen --no-dev -o /tmp/requirements.txt \
+    && if [ "$GUAI_FORECAST" = "1" ]; \
+       then uv export --frozen --no-dev --extra forecast -o /tmp/requirements.txt; \
+       else uv export --frozen --no-dev -o /tmp/requirements.txt; fi \
     && uv pip install --system -r /tmp/requirements.txt \
     && uv pip install --system --no-deps /app/server \
     && cd /app && rm -rf /tmp/requirements.txt server

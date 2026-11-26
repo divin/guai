@@ -22,6 +22,17 @@ dependencies = [
 server = "guai_hub.__main__:main"
 guai-hub = "guai_hub.__main__:main"
 
+[project.optional-dependencies]
+# Forecasting extra: the Inpriora tabular FM (pinned by commit; HF checkpoint
+# revision pinned in guai_hub.forecasting.models.inpriora_model). Optional —
+# the server runs and forecasts with baselines when it is not installed.
+forecast = [
+    "inpriora",
+    # Direct torch pin so tool.uv.sources forces the CPU-only index; inpriora
+    # itself only requires torch>=2.4 and the CPU index's newest is 2.9.1.
+    "torch==2.9.1",
+]
+
 [build-system]
 requires = ["uv_build>=0.12.10,<0.13.0"]
 build-backend = "uv_build"
@@ -48,3 +59,14 @@ extend-immutable-calls = ["fastapi.Depends", "fastapi.Query"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+
+[tool.uv.sources]
+inpriora = { git = "https://github.com/ai-for-data/inpriora.git", rev = "4b0d403c22100751e38765388273d3f32858d61c" }
+# Torch from the CPU-only wheel index: the hub is CPU-only and the CUDA wheels
+# pull in gigabytes of NVIDIA libraries for nothing.
+torch = [{ index = "pytorch-cpu" }]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true

@@ -84,16 +84,24 @@ class ExpandingPriorClassifier:
 
 
 def new_regressor(name: str, column_index: int) -> RegressionForecaster:
-    """Factory for regression baselines. FM factories are registered in step 5."""
+    """Factory for regression models: baselines plus the Inpriora tabular FM."""
     if name == "lag1":
         return LagColumnRegressor(name="lag1", column_index=column_index)
     if name == "seasonal_naive":
         return LagColumnRegressor(name="seasonal_naive", column_index=column_index)
+    if name == "inpriora_regressor":
+        from guai_hub.forecasting.models.inpriora_model import InprioraRegressorModel
+
+        return InprioraRegressorModel()
     raise ValueError(f"unknown regressor {name!r}")
 
 
 def new_classifier(name: str) -> ClassificationForecaster:
-    """Factory for classification baselines."""
+    """Factory for classification models: baseline prior plus the Inpriora FM."""
     if name == "expanding_prior":
         return ExpandingPriorClassifier()
+    if name == "inpriora_classifier":
+        from guai_hub.forecasting.models.inpriora_model import InprioraClassifierModel
+
+        return InprioraClassifierModel()
     raise ValueError(f"unknown classifier {name!r}")
