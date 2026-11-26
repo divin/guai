@@ -19,6 +19,7 @@ from sqlalchemy import select
 
 from guai_hub.config import Settings
 from guai_hub.database import Database
+from guai_hub.forecasting.aggregate import build_daily_panel
 from guai_hub.models import (
     Activity,
     CheckinDefinition,
@@ -254,22 +255,29 @@ async def stats(settings: Settings, db: Database) -> dict:
     sleep = await _sleep_rows(db, None, None)
     today_sleep = sleep[-1].sleep_seconds if sleep else None
 
-    days = [today - timedelta(days=i) for i in range(6, -1, -1)]
-    day_steps: list[int] = []
-    day_sleep: list[int] = []
-    for day in days:
-        rows = await _fetch(
-            db, Activity, start_utc=local_day_start(day, tz), end_utc=local_day_end(day, tz)
-        )
-        max_steps = max((r.steps for r in rows if r.steps is not None), default=None)
-        if max_steps is not None:
-            day_steps.append(max_steps)
-        night = [s for s in sleep if s.night_date == day.isoformat()]
-        if night and night[0].sleep_seconds is not None:
-            day_sleep.append(night[0].sleep_seconds)
+    # 7-day averages use closed full days only (shared aggregation rule): the
+    # always-partial current day and unclosed past days would drag them down.
+    # "Today" keeps its live partial value above, but never enters an average.
+    avg_start = today - timedelta(days=7)
+    activity_rows = await _fetch(
+        db,
+        Activity,
+        start_utc=local_day_start(avg_start, tz),
+        end_utc=local_day_end(today, tz),
+    )
+    panel = build_daily_panel(activity=activity_rows, tz=tz)
+    day_steps = [r.steps for r in panel if r.steps is not None and avg_start <= r.date < today]
+    day_sleep = [
+        s.sleep_seconds
+        for s in sleep
+        if s.sleep_seconds is not None and avg_start <= date_cls.fromisoformat(s.night_date) < today
+    ]
 
     hr_rows = await _fetch(
-        db, HeartRate, start_utc=local_day_start(days[0], tz), end_utc=local_day_end(today, tz)
+        db,
+        HeartRate,
+        start_utc=local_day_start(today - timedelta(days=6), tz),
+        end_utc=local_day_end(today, tz),
     )
     hr_avg = _avg([r.bpm for r in hr_rows])
 

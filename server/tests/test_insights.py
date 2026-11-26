@@ -378,3 +378,57 @@ def test_export_heart_rate_includes_bpm_raw(client, settings, migrated_db_path):
     rows = list(csv.reader(io.StringIO(resp.text)))
     assert rows[0] == ["event_time", "bpm", "bpm_raw"]
     assert [row[1:3] for row in rows[1:]] == [["70", "64"], ["71", ""]]
+
+
+def _sync_day(client, day_local_iso: str, steps: int):
+    """One activity sync at 23:30 UTC on the given (UTC==local in tests) day."""
+    client.post(
+        "/api/sync",
+        json={"collected_at": f"{day_local_iso}T23:30:00Z", "activity": {"steps": steps}},
+        headers=auth(),
+    )
+
+
+def test_stats_averages_exclude_today_and_unclosed_days(client, settings, migrated_db_path):
+    """7d averages use closed full days only: today's partial sync must not drag them."""
+    from datetime import UTC, datetime, timedelta
+
+    today = datetime.now(UTC).date()
+    # seven closed full days before today, values 1000..7000 -> avg 4000
+    for i in range(1, 8):
+        day = today - timedelta(days=i)
+        _sync_day(client, day.isoformat(), 1000 * (8 - i))
+    # today: partial sync (watch will keep counting) AND an unclosed past day
+    client.post(
+        "/api/sync",
+        json={"collected_at": f"{today.isoformat()}T10:00:00Z", "activity": {"steps": 300}},
+        headers=auth(),
+    )
+    _sync_day(client, (today - timedelta(days=8)).isoformat(), 999_999)  # outside window
+
+    stats = client.get("/api/stats").json()
+    assert stats["today_steps"] == 300, "today's live partial value still shown"
+    assert stats["7d_avg_steps"] == 4000.0, (
+        "average over the seven closed days only; today's partial 300 excluded"
+    )
+
+
+def test_stats_average_skips_unclosed_day(client, settings, migrated_db_path):
+    """A past day whose last sync is before CLOSURE_HOUR contributes nothing."""
+    from datetime import UTC, datetime, timedelta
+
+    today = datetime.now(UTC).date()
+    # 7000 closed, an unclosed day (sync at 10:00 only), 5000 closed -> avg 6000
+    _sync_day(client, (today - timedelta(days=1)).isoformat(), 7000)
+    client.post(
+        "/api/sync",
+        json={
+            "collected_at": f"{(today - timedelta(days=2)).isoformat()}T10:00:00Z",
+            "activity": {"steps": 90000},
+        },
+        headers=auth(),
+    )
+    _sync_day(client, (today - timedelta(days=3)).isoformat(), 5000)
+
+    stats = client.get("/api/stats").json()
+    assert stats["7d_avg_steps"] == 6000.0
