@@ -1,6 +1,6 @@
 # GUAI server — two instances from one image, split by trust boundary.
 # Pulls the prebuilt image from GHCR by default (published on every version tag;
-# includes the forecasting FM — Inpriora + CPU torch, ~800 MB image). Model
+# includes the forecasting FM — Inpriora + CPU torch, ~1.4 GB image vs ~360 MB thin). Model
 # weights (~1 GB) download once at first fit and persist under /data/hf-cache.
 # Local thin build (baselines only): docker build -t guai:local --build-arg GUAI_FORECAST=0 .
 #   then GUAI_IMAGE=guai:local docker compose up -d

@@ -22,6 +22,31 @@ WORKDIR /build
 COPY frontend/ ./frontend/
 RUN zola --root frontend build
 
+# --- Python deps stage: pinned install (git needed for the inpriora git dep) -
+FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim AS python-deps
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Locked, deterministic install: export pinned requirements from uv.lock.
+# The forecasting extra (Inpriora + CPU torch) is built into the image by
+# default (~550 MB); GUAI_FORECAST=0 produces a baselines-only thin image.
+# The PyTorch CPU index + unsafe-best-match are needed for the `torch==2.9.1+cpu`
+# pin in the exported requirements (uv pip does not read tool.uv.sources).
+ARG GUAI_FORECAST=1
+WORKDIR /app
+COPY server/ ./server/
+RUN cd /app/server \
+    && if [ "$GUAI_FORECAST" = "1" ]; \
+       then uv export --frozen --no-dev --extra forecast -o /tmp/requirements.txt \
+           && uv pip install --system \
+                --extra-index-url https://download.pytorch.org/whl/cpu \
+                --index-strategy unsafe-best-match \
+                -r /tmp/requirements.txt; \
+       else uv export --frozen --no-dev -o /tmp/requirements.txt \
+           && uv pip install --system -r /tmp/requirements.txt; fi \
+    && uv pip install --system --no-deps /app/server
+
 # --- Runtime stage ---------------------------------------------------------
 FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
 LABEL org.opencontainers.image.source="https://github.com/${GITHUB_REPOSITORY}"
@@ -37,18 +62,10 @@ ENV HF_HOME=/data/hf-cache
 
 WORKDIR /app
 
-# Locked, deterministic install: export pinned requirements from uv.lock.
-# The forecasting extra (Inpriora + CPU torch) is built into the image by
-# default (~550 MB); GUAI_FORECAST=0 produces a baselines-only thin image.
-ARG GUAI_FORECAST=1
-COPY server/ ./server/
-RUN cd /app/server \
-    && if [ "$GUAI_FORECAST" = "1" ]; \
-       then uv export --frozen --no-dev --extra forecast -o /tmp/requirements.txt; \
-       else uv export --frozen --no-dev -o /tmp/requirements.txt; fi \
-    && uv pip install --system -r /tmp/requirements.txt \
-    && uv pip install --system --no-deps /app/server \
-    && cd /app && rm -rf /tmp/requirements.txt server
+# Installed python packages and entry points only — git and the build tooling
+# of the deps stage never reach the runtime image.
+COPY --from=python-deps /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
+COPY --from=python-deps /usr/local/bin /usr/local/bin
 
 COPY --from=frontend /build/frontend/public /app/static
 COPY server/migrations /app/migrations
