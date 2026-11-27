@@ -1,9 +1,9 @@
 # GUAI server — two instances from one image, split by trust boundary.
-# Pulls the prebuilt image from GHCR by default (published on every version tag).
-# Local builds: docker build -t guai:local --build-arg GUAI_FORECAST=1 .  then
-#   GUAI_IMAGE=guai:local docker compose up -d
-# GUAI_FORECAST=1 adds the forecasting extra (Inpriora + CPU torch, ~1 GB);
-# omit it for a thin image — the server then forecasts with baselines only.
+# Pulls the prebuilt image from GHCR by default (published on every version tag;
+# includes the forecasting FM — Inpriora + CPU torch, ~800 MB image). Model
+# weights (~1 GB) download once at first fit and persist under /data/hf-cache.
+# Local thin build (baselines only): docker build -t guai:local --build-arg GUAI_FORECAST=0 .
+#   then GUAI_IMAGE=guai:local docker compose up -d
 #
 # Copy example.env to .env and set GUAI_SYNC_TOKEN (>= 16 chars).
 # Linux bind mounts: make ./data writable by the container's non-root user (uid 10001):

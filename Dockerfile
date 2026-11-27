@@ -38,9 +38,9 @@ ENV HF_HOME=/data/hf-cache
 WORKDIR /app
 
 # Locked, deterministic install: export pinned requirements from uv.lock.
-# GUAI_FORECAST=1 adds the forecasting extra (Inpriora + CPU torch, ~1 GB);
-# without it the server runs normally and forecasts with baselines only.
-ARG GUAI_FORECAST=0
+# The forecasting extra (Inpriora + CPU torch) is built into the image by
+# default (~550 MB); GUAI_FORECAST=0 produces a baselines-only thin image.
+ARG GUAI_FORECAST=1
 COPY server/ ./server/
 RUN cd /app/server \
     && if [ "$GUAI_FORECAST" = "1" ]; \
