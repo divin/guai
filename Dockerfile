@@ -31,6 +31,9 @@ ENV GUAI_STATIC_DIR=/app/static \
     GUAI_MIGRATIONS_DIR=/app/migrations \
     UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy
+# HF cache on the persisted volume: the forecasting extra downloads ~1 GB of
+# model weights at first fit; without this a container recreate re-downloads them.
+ENV HF_HOME=/data/hf-cache
 
 WORKDIR /app
 
