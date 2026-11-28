@@ -90,6 +90,10 @@ class ExpandingPriorClassifier:
             raise RuntimeError("fit before predict_proba")
         return [list(self._proba) for _ in features]
 
+    def classes(self) -> list[int]:
+        """Class indices of the probability columns (always 0..n_classes-1)."""
+        return list(range(self.n_classes))
+
 
 def new_regressor(name: str, column_index: int) -> RegressionForecaster:
     """Factory for regression models: baselines plus the Inpriora tabular FM."""

@@ -190,7 +190,13 @@ async def _forecast_metric(db, entry, panel, definitions, today, computed_at) ->
                     backtest_score,
                     baseline_score,
                     computed_at,
-                    probabilities=json.dumps({str(k): round(p, 6) for k, p in enumerate(proba)}),
+                    # Key by the model's ACTUAL class indices: Inpriora returns
+                    # one column per class seen in training, so positions can
+                    # skip classes (e.g. an option nobody answered recently);
+                    # positional keys would mislabel the UI's probability bars.
+                    probabilities=json.dumps(
+                        {str(k): round(p, 6) for k, p in zip(fitted.classes(), proba)}
+                    ),
                 )
             )
 

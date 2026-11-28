@@ -70,3 +70,13 @@ class InprioraClassifierModel:
     def predict_proba(self, features: list[list[float]]) -> list[list[float]]:
         raw = self._model.predict_proba(features)
         return [[float(p) for p in row] for row in raw]
+
+    def classes(self) -> list[int]:
+        """Class indices of the probability columns — the classes seen in fit.
+
+        Inpriora returns one column per class observed in training, NOT one per
+        possible class: when a check-in option was never answered recently the
+        column count shrinks. Probability keys must therefore come from here,
+        never from column position (see the job's probability storage).
+        """
+        return [int(c) for c in self._model.classes_]

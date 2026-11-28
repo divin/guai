@@ -1,6 +1,6 @@
 # GUAI 🩺
 
-**GUAI (具合, “condition” or “state of health” in Japanese — also *Gather · Understand · Anticipate · Insights*) is a privacy-friendly, self-hosted health tracker built around a Pebble smartwatch.** The watchface passively collects steps, sleep, and heart rate and syncs them to your own server; the server tracks your local weather from Open-Meteo and runs *check-ins* — user-defined questions (`boolean`, `scale 0–10`, or single choice) scheduled daily/weekly/once and answered directly on the watch; a web dashboard shows trends, correlations (does last night's sleep predict today's mood? does pressure precede your headaches?), and CSV export. Everything lives in one SQLite file on your host; the only outbound traffic is to Open-Meteo (and Pushover, optionally, for “a check-in is waiting” pings that never say what's being asked).
+**GUAI (具合, “condition” or “state of health” in Japanese — also *Gather · Understand · Anticipate · Insights*) is a privacy-friendly, self-hosted health tracker built around a Pebble smartwatch.** The watchface passively collects steps, sleep, and heart rate and syncs them to your own server; the server tracks your local weather from Open-Meteo and runs *check-ins* — user-defined questions (`boolean`, `scale 0–10`, or single choice) scheduled daily/weekly/once and answered directly on the watch; a web dashboard shows trends, correlations (does last night's sleep predict today's mood? does pressure precede your headaches?), and CSV export. Everything lives in one SQLite file on your host; outbound traffic is limited to Open-Meteo (weather), Pushover (optional “a check-in is waiting” pings that never say what's being asked), and a one-time ~1 GB download of model weights from Hugging Face for the forecasting feature (cached on your own disk afterwards).
 
 AI tools were used during development.
 
@@ -31,7 +31,7 @@ The **watchface** reads Pebble's Health API each minute, sends snapshots to its 
 - **Wrist-based check-ins:** Answer scheduled `boolean`, `scale`, and single-choice questions directly on the watch. Navigate choices with UP/DOWN, review the answer, then confirm before submitting.
 - **Self-hosted dashboard:** Review health summaries, live data, charts, check-in history, and daily trends; manage check-ins and weather location; and export your data as CSV.
 - **Nightly forecasts:** A background job forecasts your metrics — including your own check-ins — from your data every night, using a tabular foundation model (Inpriora) that competes against honest baselines in a walk-forward backtest. Only models that beat the baselines are tagged reliable; the rest are labelled "not yet reliable". Pick which metrics get forecasts in the dashboard; point values and probability bars, never fabricated precision.
-- **Private by design:** Health and check-in data stays in your SQLite database on your server. The watch buffers uploads offline, and only the weather provider (Open-Meteo) and optional Pushover receive outbound requests.
+- **Private by design:** Health and check-in data stays in your SQLite database on your server. The watch buffers uploads offline. Outbound requests go only to the weather provider (Open-Meteo), optional Pushover, and — once, to fetch the forecasting model weights — Hugging Face; forecasts are computed on your own server, and no health data ever leaves it.
 
 <p align="center">
   <img src="assets/watchface-dark.png" width="200" alt="GUAI watchface, dark theme (default)">
@@ -67,6 +67,8 @@ The example Compose file pulls the published `ghcr.io/divin/guai` image (plain v
 - **`guai-device` (device, port `8081`)** — only the four token-protected endpoints the watchface and check-in app need (`POST /api/sync`, `GET /api/checkins/pending`, `POST /api/checkins/instances/{id}/responses`, `GET /api/weather/current`). No dashboard, no frontend, no scheduler. **This is the only instance to expose via reverse proxy/TLS.**
 
 Migrations run automatically at startup on the internal instance and are additive-only — your data is never touched by an upgrade beyond adding columns/tables; the device instance runs none (the shared SQLite file means both always agree). Prefer a single container? Set `GUAI_SERVER_MODE=full` (the default) on one service and skip the split — every mode composes from the same image.
+
+The published image includes the forecasting stack (Inpriora tabular foundation model + CPU-only PyTorch, ~1.4 GB image). On the first nightly run the server downloads ~1 GB of model weights from Hugging Face into the `/data` volume (`/data/hf-cache`) — after that, forecasting is fully local. Want a smaller image without forecasting? Build locally with `--build-arg GUAI_FORECAST=0` (~360 MB); the dashboard then forecasts with the honest baselines only.
 
 ## ⌚ Pebble setup
 

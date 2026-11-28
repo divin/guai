@@ -136,12 +136,28 @@ def _seed_db(db_path: str, days: int = 30) -> None:
                     updated_at="2026-10-20T00:00:00Z",
                 )
             )
+            s.add(
+                CheckinDefinition(
+                    id="def-choice",
+                    title="Day quality",
+                    answer_type="single_choice",
+                    scale_min=0,
+                    scale_max=10,
+                    options='["Good", "Neutral", "Bad"]',
+                    schedule="{}",
+                    due_window_minutes=120,
+                    reminder_minutes=30,
+                    active=True,
+                    created_at="2026-10-20T00:00:00Z",
+                    updated_at="2026-10-20T00:00:00Z",
+                )
+            )
             await s.commit()
 
         async with db.session_factory() as s:
             for i in range(days):
                 day = start + timedelta(days=i)
-                for def_id, value in (("def-bool", i % 2), ("def-scale", 5 + (i % 3))):
+                for def_id in ("def-bool", "def-scale", "def-choice"):
                     inst = CheckinInstance(
                         id=f"inst-{def_id}-{i}",
                         definition_id=def_id,
@@ -150,21 +166,29 @@ def _seed_db(db_path: str, days: int = 30) -> None:
                         status="answered",
                     )
                     s.add(inst)
-                    resp = (
-                        CheckinResponse(
+                    if def_id == "def-bool":
+                        resp = CheckinResponse(
                             id=f"resp-{def_id}-{i}",
                             instance_id=inst.id,
-                            value_boolean=value,
+                            value_boolean=i % 2,
                             submitted_at=f"{day}T20:30:00Z",
                         )
-                        if def_id == "def-bool"
-                        else CheckinResponse(
+                    elif def_id == "def-scale":
+                        resp = CheckinResponse(
                             id=f"resp-{def_id}-{i}",
                             instance_id=inst.id,
-                            value_scale=value,
+                            value_scale=5 + (i % 3),
                             submitted_at=f"{day}T20:30:00Z",
                         )
-                    )
+                    else:
+                        # single_choice where "Bad" is never answered: the model's
+                        # observed classes are a subset of the 3 options
+                        resp = CheckinResponse(
+                            id=f"resp-{def_id}-{i}",
+                            instance_id=inst.id,
+                            value_choice="Good" if i % 2 == 0 else "Neutral",
+                            submitted_at=f"{day}T20:30:00Z",
+                        )
                     s.add(resp)
             await s.commit()
 
@@ -203,7 +227,12 @@ def test_run_forecast_job_end_to_end(migrated_db_path):
     asyncio.run(db.dispose())
 
     # default selection: 3 sensors + 2 check-ins (all selected, all forecast)
-    assert set(summary["per_metric"]) == SENSOR_METRICS | {"checkin:def-bool", "checkin:def-scale"}
+    # default selection: 3 sensors + 3 check-ins
+    assert set(summary["per_metric"]) == SENSOR_METRICS | {
+        "checkin:def-bool",
+        "checkin:def-scale",
+        "checkin:def-choice",
+    }
     assert summary["rows"] == len(stored) > 0
 
     by_metric: dict[str, list[ForecastResult]] = {}
@@ -229,6 +258,16 @@ def test_run_forecast_job_end_to_end(migrated_db_path):
     probs = json.loads(h1.probabilities)
     assert set(probs) == {"0", "1"}
     assert abs(sum(probs.values()) - 1.0) < 1e-3
+
+    # single_choice with "Bad" never answered: probability keys must be the
+    # model's ACTUAL class indices (a subset of 0..2), never positions —
+    # this is what keeps the UI's Good/Neutral/Bad labels truthful
+    choice_h1 = next(r for r in by_metric["checkin:def-choice"] if r.horizon == 1)
+    choice_probs = json.loads(choice_h1.probabilities)
+    assert set(choice_probs) and all(0 <= int(k) <= 2 for k in choice_probs)
+    assert abs(sum(choice_probs.values()) - 1.0) < 1e-3
+    if choice_h1.model == "inpriora_classifier":
+        assert "2" not in choice_probs, "class absent from training must be absent from keys"
 
 
 def test_run_forecast_job_prunes_deselected(migrated_db_path):

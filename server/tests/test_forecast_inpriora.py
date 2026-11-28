@@ -46,6 +46,18 @@ def test_inpriora_regressor_adapter_synthetic():
 
 
 @pytest.mark.skipif(not fm_available(), reason="forecast extra not installed")
+def test_inpriora_classifier_exposes_actual_classes():
+    """columns/classes_ shrink when a class is absent from training — the job
+    keys stored probabilities by these indices, never by column position."""
+    model = new_classifier("inpriora_classifier")
+    X = [[float(i)] for i in range(12)]
+    y = [0, 2, 0, 2, 0, 2, 0, 2, 0, 2, 0, 2]  # class 1 never answered
+    model.fit(X, y)
+    assert model.classes() == [0, 2]
+    assert len(model.predict_proba([[1.0]])[0]) == 2
+
+
+@pytest.mark.skipif(not fm_available(), reason="forecast extra not installed")
 def test_inpriora_classifier_adapter_synthetic():
     """Adapter returns rows of per-class probabilities summing to 1."""
     model = new_classifier("inpriora_classifier")

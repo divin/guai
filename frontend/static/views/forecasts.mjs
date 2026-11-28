@@ -21,8 +21,10 @@ export function formatValue(metric, value) {
 }
 
 // Parse a probabilities JSON column ("{"0": 0.64, "1": 0.36}") into ordered
-// [label, value] pairs against the metric's class labels. Returns [] when the
-// row carries no probabilities.
+// [label, value] pairs. Keys are CLASS INDICES into the metric's class labels —
+// the nightly job keys them by the model's actual classes, and a class missing
+// from recent training (e.g. nobody answered "Bad" lately) is simply absent
+// rather than mislabeled. Returns [] when the row carries no probabilities.
 export function parseProbabilities(probabilitiesJson, classes) {
   if (!probabilitiesJson) return [];
   let parsed;
@@ -33,9 +35,10 @@ export function parseProbabilities(probabilitiesJson, classes) {
   }
   return Object.keys(parsed)
     .sort((a, b) => Number(a) - Number(b))
-    .map((key, index) => {
-      const fallback = Number(key) === 0 ? "No" : "Yes";
-      const label = (classes && classes[index]) || fallback;
+    .map((key) => {
+      const classIndex = Number(key);
+      const fallback = classIndex === 0 ? "No" : "Yes";
+      const label = (classes && classes[classIndex]) || fallback;
       return [label, parsed[key]];
     });
 }

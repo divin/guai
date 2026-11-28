@@ -35,6 +35,12 @@ test("parseProbabilities maps class labels and sorts by index", () => {
     ["No", 0.9],
     ["Yes", 0.1],
   ]);
+  // keys are CLASS INDICES: a class missing from recent training is skipped,
+  // not positionally mislabeled (e.g. model saw Good+Bad, never Neutral)
+  assert.deepEqual(parseProbabilities('{"0": 0.5, "2": 0.5}', ["Good", "Neutral", "Bad"]), [
+    ["Good", 0.5],
+    ["Bad", 0.5],
+  ]);
   assert.deepEqual(parseProbabilities(null, ["No", "Yes"]), []);
   assert.deepEqual(parseProbabilities("not json", null), []);
 });
